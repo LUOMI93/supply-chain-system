@@ -5,9 +5,10 @@ import { getToken } from "next-auth/jwt";
 import type { UserRole } from "@/lib/types";
 import { writeFile, mkdir, readdir, unlink, rmdir, readFile } from "fs/promises";
 import path from "path";
-import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import formidable from "formidable";
+
+type ExcelRowData = Record<string, unknown>;
 
 // ========== 工具函数（导入前校验/净化） ==========
 
@@ -180,41 +181,6 @@ function isPrivateOrLocalHost(hostname: string): boolean {
 // 图片下载最大大小：10MB
 const MAX_IMAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 
-// 展开合并单元格：将合并区域的值填充到所有单元格
-// SheetJS 读取合并单元格时，只有左上角单元格有值，其余为空
-// 此函数将左上角的值复制到合并区域的所有单元格，避免导入时丢失数据
-function expandMergedCells(sheet: XLSX.WorkSheet): void {
-  const merges = sheet["!merges"];
-  if (!merges || merges.length === 0) return;
-
-  for (const range of merges) {
-    // range.s = start cell { r, c }, range.e = end cell { r, c }
-    const startRow = range.s.r;
-    const startCol = range.s.c;
-    const endRow = range.e.r;
-    const endCol = range.e.c;
-
-    // 获取左上角单元格的值
-    const topLeftAddr = XLSX.utils.encode_cell({ r: startRow, c: startCol });
-    const topLeftCell = sheet[topLeftAddr];
-    if (!topLeftCell) continue;
-
-    // 将值复制到合并区域的所有单元格（包括左上角自身，无害）
-    for (let r = startRow; r <= endRow; r++) {
-      for (let c = startCol; c <= endCol; c++) {
-        if (r === startRow && c === startCol) continue; // 跳过左上角（已有值）
-        const addr = XLSX.utils.encode_cell({ r, c });
-        // 复制单元格值（保留类型信息）
-        sheet[addr] = {
-          v: topLeftCell.v,
-          t: topLeftCell.t,
-          ...(topLeftCell.w ? { w: topLeftCell.w } : {}),
-        };
-      }
-    }
-  }
-}
-
 // Pages Router body parser 配置：禁用默认 parser，由 formidable 处理
 // 支持最大 200MB 文件上传
 export const config = {
@@ -259,45 +225,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 解析 Excel 文件（损坏文件可能抛异常，用 400 而非 500 返回）
-    let workbook: XLSX.WorkBook;
     let buffer: Buffer | null = null;
+    let rows: ExcelRowData[] = [];
     let imagesByRow: Map<number, Array<{ base64: string; ext: string }>> = new Map();
     
     try {
       console.log("[Import] Reading file from:", uploadedFile.filepath);
       buffer = await readFile(uploadedFile.filepath);
       console.log("[Import] File read, size:", buffer.length, "bytes");
-      workbook = XLSX.read(buffer, { type: "buffer", cellStyles: true });
-
-      // 展开合并单元格：将合并区域的值填充到所有单元格，避免导入时丢失数据
-      const sheetName0 = workbook.SheetNames[0];
-      if (sheetName0) {
-        expandMergedCells(workbook.Sheets[sheetName0]);
-      }
+      rows = await parseExcelRows(buffer);
 
       // 用 exceljs 提取 Excel 中嵌入的图片和它们的行位置
-      // SheetJS 社区版不解析 drawing XML，所以必须用 exceljs 来拿图片
       imagesByRow = await extractImagesByRow(buffer);
     } catch {
       return res.status(400).json(
         { error: "Excel 文件格式无效或已损坏，请检查后重新上传" },
         );
     }
-
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
-      return res.status(400).json({ error: "Excel 文件中没有工作表" });
-    }
-
-    const sheet = workbook.Sheets[sheetName];
-    // 兼容原逻辑：保持 embeddedImages map（用于 findCellRangeForRow 等）
-    const embeddedImages: Map<string, { base64: string; ext: string }> = new Map();
-
-    // 2. 解析文本数据行
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: "",
-      raw: false,
-    });
 
     if (rows.length === 0) {
       return res.status(400).json({ error: "Excel 文件中没有数据" });
@@ -890,11 +834,92 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 // ========== 工具函数 ==========
 
+async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    return [];
+  }
+
+  const headerRow = worksheet.getRow(1);
+  const colCount = Math.max(worksheet.columnCount, headerRow.cellCount);
+  const headers: Array<string | null> = [];
+
+  for (let col = 1; col <= colCount; col++) {
+    const header = getExcelCellText(headerRow.getCell(col)).trim();
+    headers[col] = header || null;
+  }
+
+  const rows: ExcelRowData[] = [];
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const parsedRow: ExcelRowData = {};
+    let hasData = false;
+
+    for (let col = 1; col < headers.length; col++) {
+      const header = headers[col];
+      if (!header) continue;
+
+      const value = getExcelCellText(row.getCell(col));
+      parsedRow[header] = value;
+      if (value.trim() !== "") {
+        hasData = true;
+      }
+    }
+
+    if (hasData) {
+      rows.push(parsedRow);
+    }
+  }
+
+  return rows;
+}
+
+function getExcelCellText(cell: ExcelJS.Cell): string {
+  const value = cell.value;
+  if (value == null) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    return cell.text || value.toISOString();
+  }
+
+  if (typeof value !== "object") {
+    return cell.text || String(value);
+  }
+
+  if ("richText" in value && Array.isArray(value.richText)) {
+    return value.richText.map((part) => part.text ?? "").join("");
+  }
+
+  if ("formula" in value) {
+    const formula = String(value.formula ?? "");
+    if (formula.trim().toUpperCase().startsWith("DISPIMG")) {
+      return `=${formula}`;
+    }
+    if ("result" in value && value.result != null) {
+      return String(value.result);
+    }
+    return formula ? `=${formula}` : "";
+  }
+
+  if ("text" in value && value.text != null) {
+    return String(value.text);
+  }
+
+  if ("result" in value && value.result != null) {
+    return String(value.result);
+  }
+
+  return cell.text || "";
+}
+
 // 从 Excel 工作簿中提取嵌入的图片
 /**
  * Use exceljs to extract embedded images with their cell row positions.
- * SheetJS (xlsx) community edition does NOT populate sheet["!images"],
- * so we use exceljs which properly parses drawing relationships in xlsx.
  * Returns: Map<rowNumber (1-based Excel row), Array<{base64, ext}>>
  */
 async function extractImagesByRow(
@@ -903,7 +928,6 @@ async function extractImagesByRow(
   const imagesByRow = new Map<number, Array<{ base64: string; ext: string }>>();
   try {
     const workbook = new ExcelJS.Workbook();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (workbook.xlsx as any).load(buffer);
 
     // First worksheet (images are anchored to cells in this sheet)
@@ -990,53 +1014,6 @@ async function extractImagesByRow(
   return imagesByRow;
 }
 
-// Legacy function kept for compatibility with other callers (unused in import)
-function extractEmbeddedImages(
-  _workbook: XLSX.WorkBook,
-  _sheetName: string,
-  _output: Map<string, { base64: string; ext: string }>
-) {
-  // No-op: Image extraction now handled by extractImagesByRow above
-}
-
-// 查找某行对应的单元格范围
-function findCellRangeForRow(
-  sheet: XLSX.WorkSheet,
-  rowIndex: number,
-  _workbook: XLSX.WorkBook
-): { startCol: number; endCol: number; startRow: number; endRow: number } {
-  const ref = sheet["!ref"];
-  if (!ref) {
-    return { startCol: 0, endCol: 30, startRow: rowIndex + 1, endRow: rowIndex + 2 };
-  }
-
-  const range = XLSX.utils.decode_range(ref);
-  return {
-    startCol: range.s.c,
-    endCol: range.e.c,
-    startRow: rowIndex + 1,
-    endRow: rowIndex + 2,
-  };
-}
-
-// 判断单元格引用是否在指定范围内
-function isCellInRange(
-  cellRef: string,
-  range: { startCol: number; endCol: number; startRow: number; endRow: number }
-): boolean {
-  try {
-    const decoded = XLSX.utils.decode_cell(cellRef);
-    return (
-      decoded.r >= range.startRow &&
-      decoded.r < range.endRow &&
-      decoded.c >= range.startCol &&
-      decoded.c <= range.endCol
-    );
-  } catch {
-    return false;
-  }
-}
-
 // 保存 Base64 图片到文件系统
 async function saveBase64Image(
   dataUrl: string,
@@ -1064,7 +1041,7 @@ async function saveBase64Image(
 
   const filename = `${safeSku}_${index + 1}.${ext}`;
   const filePath = path.join(uploadDir, filename);
-  await writeFile(filePath, buffer);
+  await writeFile(filePath, new Uint8Array(buffer));
 
   return `/uploads/${safeSku}/${filename}`;
 }
@@ -1150,7 +1127,7 @@ async function downloadAndSaveImage(
 
     const filename = `${safeSku}_${index + 1}.${ext}`;
     const filePath = path.join(uploadDir, filename);
-    await writeFile(filePath, buffer);
+    await writeFile(filePath, new Uint8Array(buffer));
 
     return `/uploads/${safeSku}/${filename}`;
   } catch (e: unknown) {

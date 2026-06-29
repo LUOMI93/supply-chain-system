@@ -452,7 +452,7 @@ async function saveBase64Image(dataUrl: string, sku: string, index: number): Pro
 
   const filename = `${sku}_${index + 1}.${ext}`;
   const filePath = path.join(uploadDir, filename);
-  await writeFile(filePath, buffer);
+  await writeFile(filePath, new Uint8Array(buffer));
 
   return `/uploads/${sku}/${filename}`;
 }

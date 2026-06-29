@@ -3,12 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-// 扩展 next-auth 类型
 declare module "next-auth" {
   interface User {
     role?: string;
     visibleSupplierIds?: number[];
   }
+
   interface Session {
     user: {
       id: string;
@@ -17,6 +17,7 @@ declare module "next-auth" {
       visibleSupplierIds?: number[];
     };
   }
+
   interface JWT {
     role?: string;
     id?: string;
@@ -53,7 +54,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!valid) return null;
 
-        // Update last login
         await prisma.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date() },
@@ -81,7 +81,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session.user) {
         session.user.role = token.role as string | undefined;
         session.user.id = (token.id as string) || "";
-        session.user.visibleSupplierIds = token.visibleSupplierIds as number[] | undefined;
+        session.user.visibleSupplierIds = token.visibleSupplierIds as
+          | number[]
+          | undefined;
       }
       return session;
     },
@@ -91,10 +93,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
-  // Cookie 配置：不设死 name，让 NextAuth v5 按环境自动处理
-  // secure 根据请求协议自动判断（生产 HTTPS 会自动设 true）
   useSecureCookies: process.env.NODE_ENV === "production",
   trustHost: true,
 });

@@ -20,9 +20,7 @@ export default function RootLayout({
       <body className="min-h-full bg-[#fffefa] text-[#17211a]">
         <GlobalErrorSuppressor />
         <AuthProvider>
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
+          <ErrorBoundary>{children}</ErrorBoundary>
           <Toaster position="bottom-center" />
         </AuthProvider>
       </body>

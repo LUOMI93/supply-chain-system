@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -69,15 +69,7 @@ export default function UsersPage() {
     }
   }, [sessionStatus, role, router]);
 
-  useEffect(() => {
-    if (sessionStatus === "loading") return;
-    if (role === "admin") {
-      loadUsers();
-      loadSuppliers();
-    }
-  }, [role]);
-
-  async function loadUsers() {
+  const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchUsers();
@@ -87,16 +79,24 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function loadSuppliers() {
+  const loadSuppliers = useCallback(async () => {
     try {
       const res = await fetchSuppliers();
       setSuppliers(res.data || []);
     } catch {
       // ignore
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (sessionStatus === "loading") return;
+    if (role === "admin") {
+      loadUsers();
+      loadSuppliers();
+    }
+  }, [sessionStatus, role, loadUsers, loadSuppliers]);
 
   function openVisibility(user: UserListItem) {
     setVisibilityUser(user);

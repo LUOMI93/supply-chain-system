@@ -17,11 +17,11 @@ model User {
   lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  columnPrefs        UserColumnPref?
-  auditLogs          AuditLog[]
-  createdGroups      ProductGroup[] @relation("CreatedBy")
-  updatedGroups      ProductGroup[] @relation("UpdatedBy")
-  visibleSuppliers   UserSupplierVisibility[]
+  columnPrefs      UserColumnPref?
+  auditLogs        AuditLog[]
+  createdGroups    ProductGroup[]           @relation("CreatedBy")
+  updatedGroups    ProductGroup[]           @relation("UpdatedBy")
+  visibleSuppliers UserSupplierVisibility[]
 
   @@map("users")
 }
@@ -48,15 +48,15 @@ model UserColumnPref {
 }
 
 model Supplier {
-  id        Int       @id @default(autoincrement())
-  name      String    @unique
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
   contact   String?
   remark    String?
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  groups             ProductGroup[]
-  userVisibilities   UserSupplierVisibility[]
+  groups           ProductGroup[]
+  userVisibilities UserSupplierVisibility[]
 
   @@map("suppliers")
 }
@@ -82,10 +82,10 @@ model ProductGroup {
   updater       User?     @relation("UpdatedBy", fields: [updatedBy], references: [id])
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  deletedAt     DateTime? @map("deleted_at")
 
-  specs         ProductSpec[]
-  images        ProductImage[]
+  specs  ProductSpec[]
+  images ProductImage[]
 
   @@index([supplierId])
   @@index([sku])
@@ -109,12 +109,12 @@ model ProductSpec {
   createdAt   DateTime     @default(now()) @map("created_at")
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
+  @@unique([groupId, sku])
   @@index([groupId])
   @@index([sku])
   @@index([oeCode])
   @@index([factoryCode])
   @@index([spec])
-  @@unique([groupId, sku])
   @@map("product_specs")
 }
 
