@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String    @map("password_hash")
+  displayName  String?   @map("display_name")
+  role         String    @default("viewer")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  columnPrefs        UserColumnPref?
+  auditLogs          AuditLog[]
+  createdGroups      ProductGroup[] @relation("CreatedBy")
+  updatedGroups      ProductGroup[] @relation("UpdatedBy")
+  visibleSuppliers   UserSupplierVisibility[]
+
+  @@map("users")
+}
+
+model UserSupplierVisibility {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplierId Int      @map("supplier_id")
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, supplierId])
+  @@map("user_supplier_visibility")
+}
+
+model UserColumnPref {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  columns   String   @default("[]")
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@map("user_column_prefs")
+}
+
+model Supplier {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  contact   String?
+  remark    String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  groups             ProductGroup[]
+  userVisibilities   UserSupplierVisibility[]
+
+  @@map("suppliers")
+}
+
+model ProductGroup {
+  id            Int       @id @default(autoincrement())
+  sku           String    @unique
+  supplierId    Int       @map("supplier_id")
+  supplier      Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name          String
+  productLink   String?   @map("product_link")
+  productWeight String?   @map("product_weight")
+  productSize   String?   @map("product_size")
+  packageSize   String?   @map("package_size")
+  packageWeight String?   @map("package_weight")
+  boxQuantity   String?   @map("box_quantity")
+  isPublic      Boolean   @default(true) @map("is_public")
+  remark        String?
+  version       Int       @default(1)
+  createdBy     Int?      @map("created_by")
+  creator       User?     @relation("CreatedBy", fields: [createdBy], references: [id])
+  updatedBy     Int?      @map("updated_by")
+  updater       User?     @relation("UpdatedBy", fields: [updatedBy], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  specs         ProductSpec[]
+  images        ProductImage[]
+
+  @@index([supplierId])
+  @@index([sku])
+  @@index([isPublic])
+  @@index([deletedAt])
+  @@map("product_groups")
+}
+
+model ProductSpec {
+  id          Int          @id @default(autoincrement())
+  groupId     Int          @map("group_id")
+  group       ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sku         String
+  factoryCode String?      @map("factory_code")
+  spec        String?
+  costPrice   String?      @map("cost_price")
+  salePrice   String?      @map("sale_price")
+  carModel    String?      @map("car_model")
+  oeCode      String?      @map("oe_code")
+  version     Int          @default(1)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@index([groupId])
+  @@index([sku])
+  @@index([oeCode])
+  @@index([factoryCode])
+  @@index([spec])
+  @@unique([groupId, sku])
+  @@map("product_specs")
+}
+
+model ProductImage {
+  id        Int          @id @default(autoincrement())
+  groupId   Int          @map("group_id")
+  group     ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  filePath  String       @map("file_path")
+  fileSize  Int?         @map("file_size")
+  sortOrder Int          @default(0) @map("sort_order")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@index([groupId])
+  @@map("product_images")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?     @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entityType String   @map("entity_type")
+  entityId   Int?     @map("entity_id")
+  detail     String?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

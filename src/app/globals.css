@@ -1,0 +1,464 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #f6f8f4;
+  --foreground: #1a1d1b;
+  --card: #ffffff;
+  --card-foreground: #1a1d1b;
+  --popover: #ffffff;
+  --popover-foreground: #1a1d1b;
+  --primary: #0f766e;
+  --primary-foreground: #ffffff;
+  --secondary: #ecfdf5;
+  --secondary-foreground: #0f766e;
+  --muted: #f1f5f1;
+  --muted-foreground: #64748b;
+  --accent: #d1fae5;
+  --accent-foreground: #065f46;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8e0;
+  --input: #e2e8e0;
+  --ring: #0f766e;
+  --radius: 0.75rem;
+
+  /* Premium green palette - refined & sophisticated */
+  --sage-50: #f6f8f4;
+  --sage-100: #ecf1e8;
+  --sage-200: #d9e4d1;
+  --sage-300: #b8cfac;
+  --sage-400: #8fb37e;
+  --sage-500: #5d8a52;
+  --sage-600: #0f766e;
+  --sage-700: #0d655d;
+  --sage-800: #0a4a44;
+  --sage-900: #06352f;
+
+  /* Soft accent colors for gradient backgrounds */
+  --soft-emerald: #d1fae5;
+  --soft-mint: #e8f5e9;
+  --soft-sage: #f1f8e9;
+  --soft-teal: #ccfbf1;
+  --soft-lime: #ecfccb;
+
+  /* Refined shadow system - subtle & premium */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.08), 0 4px 8px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 24px 48px rgba(15, 23, 42, 0.1), 0 8px 16px rgba(15, 23, 42, 0.05);
+  --shadow-glow: 0 4px 20px rgba(15, 118, 110, 0.15);
+}
+
+body {
+  font-family: "SF Pro Display", "PingFang SC", "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--foreground);
+  background: var(--background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
+}
+
+/* Subtle background pattern for premium feel */
+.premium-bg {
+  background: var(--background);
+  position: relative;
+}
+
+.premium-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(15, 118, 110, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(143, 179, 126, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* ========== Premium Scrollbar - Refined ========== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5ca;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8fb37e;
+}
+
+/* ========== Premium Card - Elevated Minimalism ========== */
+.premium-card {
+  background: white;
+  border: 1px solid rgba(226, 232, 224, 0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+}
+
+.premium-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: rgba(143, 179, 126, 0.4);
+}
+
+/* ========== Premium Button - Sophisticated ========== */
+.premium-btn {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.premium-btn:hover::after {
+  opacity: 1;
+}
+
+.premium-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow);
+}
+
+.premium-btn:active {
+  transform: translateY(0);
+}
+
+/* ========== Premium Table - Clean & Elegant ========== */
+.premium-table-wrapper {
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 224, 0.6);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  background: white;
+}
+
+.premium-table-wrapper table {
+  margin: 0;
+}
+
+.premium-table-wrapper thead {
+  background: linear-gradient(to bottom, #fafcf8, #f4f7f1);
+}
+
+.premium-table-wrapper thead th {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid rgba(226, 232, 224, 0.8);
+}
+
+.premium-table-wrapper tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.premium-table-wrapper tbody tr:nth-child(even) {
+  background-color: #fafcf8;
+}
+
+.premium-table-wrapper tbody tr:hover {
+  background-color: #f0fdf4;
+}
+
+.premium-table-wrapper tbody td {
+  padding: 12px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(244, 247, 241, 0.8);
+}
+
+/* ========== Stats Card - Metric Display ========== */
+.stats-card {
+  background: white;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(226, 232, 224, 0.6);
+  padding: 18px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.stats-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--sage-600), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.stats-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+  border-color: rgba(143, 179, 126, 0.5);
+}
+
+.stats-card:hover::before {
+  opacity: 0.6;
+}
+
+/* ========== Badge / Tag - Minimalist ========== */
+.premium-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.premium-badge-green {
+  background: linear-gradient(135deg, #d1fae5, #ecfdf5);
+  color: #065f46;
+  border: 1px solid rgba(15, 118, 110, 0.15);
+}
+
+.premium-badge-gray {
+  background: #f1f5f1;
+  color: #64748b;
+  border: 1px solid rgba(226, 232, 224, 0.8);
+}
+
+/* ========== Page Header ========== */
+.page-header {
+  background: white;
+  border-bottom: 1px solid rgba(226, 232, 224, 0.6);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+}
+
+/* ========== Smooth Transitions - Elegant ========== */
+.smooth-appear {
+  animation: smoothAppear 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes smoothAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========== Fade In Animation ========== */
+.fade-in {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ========== Table sticky column backgrounds ========== */
+.sticky-left-0 {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  background: #ffffff;
+}
+
+tr:nth-child(even) .sticky-left-0 {
+  background: #fafcf8;
+}
+
+tr:hover .sticky-left-0 {
+  background: #f0fdf4;
+}
+
+/* ========== Dialog overlay ========== */
+[role="dialog"] {
+  animation: dialogAppear 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes dialogAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ========== Gradient Blur Backgrounds - Premium Visual ========== */
+.gradient-blur-bg {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 25%, #f1f5e9 50%, #d1fae5 75%, #e8f5e9 100%);
+}
+
+.gradient-blur-bg::before,
+.gradient-blur-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.gradient-blur-bg::before {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(15, 118, 110, 0.12), transparent 70%);
+  top: -200px;
+  left: -150px;
+  animation: float1 20s ease-in-out infinite;
+}
+
+.gradient-blur-bg::after {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(143, 179, 126, 0.15), transparent 70%);
+  bottom: -250px;
+  right: -200px;
+  animation: float2 25s ease-in-out infinite;
+}
+
+@keyframes float1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(50px, 30px) scale(1.1);
+  }
+}
+
+@keyframes float2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-40px, -50px) scale(1.15);
+  }
+}
+
+/* ========== Glassmorphism Card ========== */
+.glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ========== Soft Input Field ========== */
+.soft-input {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(226, 232, 224, 0.8);
+  border-radius: 0.75rem;
+  padding: 12px 16px;
+  transition: all 0.2s ease;
+}
+
+.soft-input:focus {
+  background: white;
+  border-color: var(--sage-600);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+  outline: none;
+}
+
+.soft-input::placeholder {
+  color: #94a3b8;
+}
+
+/* ========== Elegant Icon Container ========== */
+.icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  transition: all 0.2s ease;
+}
+
+/* ========== Top Bar Navigation ========== */
+.premium-topbar {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(226, 232, 224, 0.5);
+}
+
+/* ========== Soft Rounded Button ========== */
+.soft-btn {
+  padding: 8px 16px;
+  border-radius: 0.625rem;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+}
+
+.soft-btn-primary {
+  background: linear-gradient(135deg, #0f766e, #0d655d);
+  color: white;
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.2);
+}
+
+.soft-btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(15, 118, 110, 0.3);
+  transform: translateY(-1px);
+}
+
+.soft-btn-secondary {
+  background: white;
+  color: #0f766e;
+  border-color: rgba(15, 118, 110, 0.2);
+}
+
+.soft-btn-secondary:hover {
+  background: #ecfdf5;
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+/* ========== Text Color Utility ========== */
+.text-sage {
+  color: var(--sage-600);
+}
+
+.bg-sage {
+  background: var(--sage-600);
+}
+
+.bg-sage-soft {
+  background: var(--soft-emerald);
+}
