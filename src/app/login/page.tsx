@@ -22,6 +22,7 @@ export default function LoginPage() {
       username: String(form.get("username") || ""),
       password: String(form.get("password") || ""),
       redirect: false,
+      redirectTo: `${window.location.origin}/`,
     });
 
     setLoading(false);

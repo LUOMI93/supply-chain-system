@@ -220,7 +220,7 @@ export default function HomePage() {
   }
 
   function handleLogout() {
-    signOut({ callbackUrl: "/login" });
+    signOut({ redirectTo: `${window.location.origin}/login` });
   }
 
   const statCards = stats

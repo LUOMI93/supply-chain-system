@@ -69,6 +69,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+
+      const target = new URL(url);
+      const base = new URL(baseUrl);
+
+      if (target.origin === base.origin || isLocalNetworkHost(target.hostname)) {
+        return url;
+      }
+
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.role = user.role;
@@ -98,3 +110,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   useSecureCookies: process.env.NODE_ENV === "production",
   trustHost: true,
 });
+
+function isLocalNetworkHost(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
