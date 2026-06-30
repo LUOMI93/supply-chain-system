@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +9,6 @@ import { toast } from "sonner";
 import { User, Lock, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -32,8 +30,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/");
-    router.refresh();
+    window.location.assign("/");
   }
 
   return (
