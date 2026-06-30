@@ -40,6 +40,8 @@ function normalizeColName(raw: string): string {
     "型号": "产品规格",
     // 拿货价格
     "拿货价": "拿货价格(元)",
+    "产品价格": "拿货价格(元)",
+    "产品价格(元)": "拿货价格(元)",
     "成本": "拿货价格(元)",
     "成本价": "拿货价格(元)",
     // 销售价格
@@ -378,6 +380,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (!rawGroupSku) {
             errors.push(`第${lineNum}行: 产品组SKU不能为空`);
             continue;
+          }
+
+          if (rawGroupSku !== prevGroupSku) {
+            for (const key of Object.keys(prevRowValues)) {
+              delete prevRowValues[key];
+            }
           }
 
           // 处理多规格行：同一产品组的后续行可以留空产品名称和供应商
@@ -847,6 +855,7 @@ function validateImportRows(rows: ExcelRowData[], colMap: Map<string, string>): 
   const errors: string[] = [];
   const specLines = new Map<string, number>();
   const groupSpecCounts = new Map<string, number>();
+  const groupNames = new Map<string, { name: string; lineNum: number }>();
   let prevGroupSku = "";
 
   for (let i = 0; i < rows.length; i++) {
@@ -866,6 +875,18 @@ function validateImportRows(rows: ExcelRowData[], colMap: Map<string, string>): 
     prevGroupSku = groupSku;
     if (!groupSpecCounts.has(groupSku)) {
       groupSpecCounts.set(groupSku, 0);
+    }
+
+    const productName = String(getColValue(row, colMap, "产品名称") || "").trim();
+    if (productName) {
+      const existing = groupNames.get(groupSku);
+      if (existing && existing.name !== productName) {
+        errors.push(
+          `第${lineNum}行: 产品组SKU "${groupSku}" 的产品名称与第${existing.lineNum}行不一致（"${existing.name}" / "${productName}"），请为不同产品使用不同产品组SKU`
+        );
+      } else if (!existing) {
+        groupNames.set(groupSku, { name: productName, lineNum });
+      }
     }
 
     if (!specSku) {

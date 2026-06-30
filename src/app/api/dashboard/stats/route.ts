@@ -10,9 +10,10 @@ export async function GET() {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // 非 admin 用户：获取可见供应商过滤（visibleIds 为空时不可见任何供应商）
+    // viewer 用户：获取可见供应商过滤（visibleIds 为空时不可见任何供应商）
+    // editor 默认可见全部数据
     let supplierIdsFilter: number[] | undefined;
-    if (user && user.role !== "admin") {
+    if (user?.role === "viewer") {
       const visibleIds = await prisma.userSupplierVisibility.findMany({
         where: { userId: user.id },
         select: { supplierId: true },
@@ -68,6 +69,12 @@ export async function GET() {
             select: {
               id: true,
               name: true,
+              groups: {
+                where: { deletedAt: null },
+                select: { sku: true },
+                orderBy: { id: "asc" },
+                take: 1,
+              },
               _count: { select: { groups: { where: { deletedAt: null } } } },
             },
             orderBy: { groups: { _count: "desc" } },
@@ -77,6 +84,12 @@ export async function GET() {
             select: {
               id: true,
               name: true,
+              groups: {
+                where: { deletedAt: null },
+                select: { sku: true },
+                orderBy: { id: "asc" },
+                take: 1,
+              },
               _count: { select: { groups: { where: { deletedAt: null } } } },
             },
             orderBy: { groups: { _count: "desc" } },
@@ -107,7 +120,7 @@ export async function GET() {
       recentGroupsCount,
       supplierBreakdown: supplierBreakdown.map((s) => ({
         id: s.id,
-        name: s.name,
+        name: user?.role === "viewer" ? getSupplierAlias(s.groups[0]?.sku, s.id) : s.name,
         count: s._count.groups,
       })),
       recentActivity: recentActivity.map((log) => ({
@@ -126,4 +139,11 @@ export async function GET() {
     console.error("Dashboard stats error:", err);
     return NextResponse.json({ error: "统计失败" }, { status: 500 });
   }
+}
+
+function getSupplierAlias(sku: string | undefined, supplierId: number): string {
+  if (!sku) return `S${supplierId}`;
+  const prefix = sku.trim().match(/^[A-Za-z]+/)?.[0];
+  if (prefix) return prefix.toUpperCase();
+  return sku.split("-")[0] || `S${supplierId}`;
 }

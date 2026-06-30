@@ -24,19 +24,32 @@ export async function GET() {
     orderBy: { name: "asc" },
     include: {
       _count: { select: { groups: { where: { deletedAt: null } } } },
+      groups: {
+        where: { deletedAt: null },
+        select: { sku: true },
+        orderBy: { id: "asc" },
+        take: 1,
+      },
     },
   });
 
   return NextResponse.json({
     data: suppliers.map((s) => ({
       id: s.id,
-      name: s.name,
-      contact: s.contact,
-      remark: s.remark,
+      name: user?.role === "viewer" ? getSupplierAlias(s.groups[0]?.sku, s.id) : s.name,
+      contact: user?.role === "viewer" ? null : s.contact,
+      remark: user?.role === "viewer" ? null : s.remark,
       productCount: s._count.groups,
       createdAt: s.createdAt,
     })),
   });
+}
+
+function getSupplierAlias(sku: string | undefined, supplierId: number): string {
+  if (!sku) return `S${supplierId}`;
+  const prefix = sku.trim().match(/^[A-Za-z]+/)?.[0];
+  if (prefix) return prefix.toUpperCase();
+  return sku.split("-")[0] || `S${supplierId}`;
 }
 
 // POST /api/suppliers — 新增供应商

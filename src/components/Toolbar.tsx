@@ -61,6 +61,8 @@ export function Toolbar({
   const [supplierSelectorOpen, setSupplierSelectorOpen] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const supplierFilterAllLabel = role === "viewer" ? "全部代号" : "全部供应商";
+  const supplierSearchPlaceholder = role === "viewer" ? "搜索代号..." : "搜索供应商...";
 
   const selectedSupplier = suppliers.find((s) => String(s.id) === supplierFilter);
   const filteredSuppliers = suppliers.filter((s) =>
@@ -169,7 +171,7 @@ export function Toolbar({
           className={`border-gray-200 h-8 px-3 ${supplierFilter ? "text-emerald-600 border-emerald-200 bg-emerald-50" : "text-gray-600 hover:bg-gray-50"}`}
         >
           <Factory className="w-3.5 h-3.5 mr-1" />
-          {selectedSupplier?.name || "全部供应商"}
+          {selectedSupplier?.name || supplierFilterAllLabel}
           {supplierFilter && (
             <span
               className="ml-1.5 w-4 h-4 rounded-full bg-emerald-200 hover:bg-emerald-300 flex items-center justify-center text-[10px] font-bold text-emerald-700 cursor-pointer"
@@ -190,7 +192,7 @@ export function Toolbar({
               <div className="p-2 border-b border-gray-100">
                 <input
                   type="text"
-                  placeholder="搜索供应商..."
+                  placeholder={supplierSearchPlaceholder}
                   value={supplierSearch}
                   onChange={(e) => setSupplierSearch(e.target.value)}
                   className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:border-emerald-500 focus:outline-none"
@@ -205,7 +207,7 @@ export function Toolbar({
                   setSupplierSelectorOpen(false);
                 }}
               >
-                <span>全部供应商</span>
+                <span>{supplierFilterAllLabel}</span>
                 <span className="text-xs text-gray-400">{suppliers.length}</span>
               </button>
               {filteredSuppliers.map((s) => (
