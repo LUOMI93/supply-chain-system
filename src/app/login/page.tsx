@@ -11,14 +11,13 @@ import { User, Lock, ArrowRight } from "lucide-react";
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function handleLogin(form: HTMLFormElement) {
     setLoading(true);
 
-    const form = new FormData(e.currentTarget);
+    const formData = new FormData(form);
     const result = await signIn("credentials", {
-      username: String(form.get("username") || ""),
-      password: String(form.get("password") || ""),
+      username: String(formData.get("username") || ""),
+      password: String(formData.get("password") || ""),
       redirect: false,
       redirectTo: `${window.location.origin}/`,
     });
@@ -64,7 +63,7 @@ export default function LoginPage() {
               <p className="text-sm text-gray-500 mt-1">请登录账号继续</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={(e) => e.preventDefault()} className="space-y-5">
               <div className="space-y-2">
                 <Label htmlFor="username" className="text-[13px] font-medium text-gray-600 ml-1">
                   用户名
@@ -106,8 +105,9 @@ export default function LoginPage() {
               </div>
 
               <Button
-                type="submit"
+                type="button"
                 disabled={loading}
+                onClick={(e) => handleLogin(e.currentTarget.form!)}
                 className="w-full h-11 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-700 hover:from-teal-700 hover:to-emerald-800 text-white text-[14px] font-medium shadow-lg shadow-teal-600/25 hover:shadow-xl hover:shadow-teal-600/30 transition-all duration-300 group disabled:opacity-70"
               >
                 {loading ? (

@@ -1,5 +1,12 @@
 import type { NextConfig } from "next";
 
+const allowedDevOrigins = [
+  "localhost",
+  "127.0.0.1",
+  "192.168.2.16",
+  process.env.LAN_HOST,
+].filter((origin): origin is string => Boolean(origin));
+
 const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
@@ -7,7 +14,7 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: "250mb",
   },
-  allowedDevOrigins: ["192.168.26.216", "localhost"],
+  allowedDevOrigins,
   turbopack: {
     root: process.cwd(),
     resolveAlias: {
