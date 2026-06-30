@@ -1,11 +1,17 @@
 import type { NextConfig } from "next";
 
+function getAllowedDevOrigins() {
+  const lanHosts = (process.env.LAN_HOST || "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
+
+  return ["localhost", "127.0.0.1", ...lanHosts];
+}
+
 const allowedDevOrigins = [
-  "localhost",
-  "127.0.0.1",
-  "192.168.2.16",
-  process.env.LAN_HOST,
-].filter((origin): origin is string => Boolean(origin));
+  ...getAllowedDevOrigins(),
+];
 
 const nextConfig: NextConfig = {
   images: {

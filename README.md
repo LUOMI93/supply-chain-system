@@ -53,10 +53,70 @@ pnpm db:setup
 pnpm dev
 ```
 
-浏览器打开：
+本机访问：
 
 ```text
 http://localhost:3000
+```
+
+## 局域网临时访问
+
+如果需要让同一个 Wi-Fi 或局域网里的其他设备访问，请先确认本机局域网 IP，然后在 `.env` 里配置：
+
+```env
+LAN_HOST="192.168.1.10"
+```
+
+如果有多个访问地址，可以用逗号分隔：
+
+```env
+LAN_HOST="192.168.1.10,10.0.0.8"
+```
+
+然后重新启动开发服务：
+
+```bash
+pnpm dev
+```
+
+其他设备访问：
+
+```text
+http://你的局域网IP:3000
+```
+
+注意：`LAN_HOST` 只用于本地开发模式，换网络或换电脑后如果 IP 变化，需要同步更新 `.env` 并重启服务。
+
+## 服务器部署
+
+正式部署到服务器时，不要使用 `pnpm dev`。请使用生产模式：
+
+```bash
+pnpm install
+pnpm db:setup
+pnpm build
+pnpm start
+```
+
+生产环境建议使用域名和 HTTPS，并配置：
+
+```env
+AUTH_SECRET="your-random-secret"
+AUTH_TRUST_HOST="true"
+NEXTAUTH_URL="https://supply.example.com"
+```
+
+如果暂时只有服务器 IP，也可以先使用：
+
+```env
+NEXTAUTH_URL="http://your-server-ip:3000"
+AUTH_TRUST_HOST="true"
+```
+
+生产环境请替换默认密钥：
+
+```bash
+openssl rand -base64 32
 ```
 
 ## 测试账号
