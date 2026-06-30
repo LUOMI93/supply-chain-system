@@ -279,6 +279,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
     }
 
+    const templateErrors = validateImportRows(rows, colMap);
+    if (templateErrors.length > 0) {
+      return res.status(400).json({
+        error: `导入失败，请先修正模板内容:\n${templateErrors.join("\n")}`,
+      });
+    }
+
+    const visibleSupplierIdSet = userRole === "admin"
+      ? null
+      : new Set(
+          (await prisma.userSupplierVisibility.findMany({
+            where: { userId },
+            select: { supplierId: true },
+          })).map((row) => row.supplierId)
+        );
+
     // 3. 解析用户手动填写的图片URL映射
     let imageUrlMap: Record<string, string[]> = {};
     if (imageUrlMapStr) {
@@ -404,9 +420,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             where: { name: supplierName },
           });
           if (!supplier) {
+            if (userRole !== "admin") {
+              errors.push(`第${lineNum}行: 供应商 "${supplierName}" 不存在，请联系管理员先创建并授权`);
+              continue;
+            }
             supplier = await tx.supplier.create({
               data: { name: supplierName },
             });
+          }
+          if (visibleSupplierIdSet && !visibleSupplierIdSet.has(supplier.id)) {
+            errors.push(`第${lineNum}行: 无权导入供应商 "${supplierName}" 的产品`);
+            continue;
           }
 
           const groupSku = rawGroupSku;
@@ -415,6 +439,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           let group = await tx.productGroup.findUnique({
             where: { sku: groupSku },
           });
+          if (group && visibleSupplierIdSet && !visibleSupplierIdSet.has(group.supplierId)) {
+            errors.push(`第${lineNum}行: 无权更新产品组 "${groupSku}"`);
+            continue;
+          }
 
           if (group) {
             // 更新现有记录 - 使用关系连接
@@ -698,7 +726,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new Error(`导入失败，已回滚所有操作:\n${errors.join("\n")}`);
       }
 
-      return { importedGroups, importedSpecs };
+      return { importedGroups, importedSpecs, warnings };
     }, { timeout: 120000 });
 
     // 清理孤立图片（上次导入失败可能遗留的文件）
@@ -804,6 +832,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         deletedSpecs: deletedSpecCount,
         warnings: [
           ...importWarnings,
+          ...result.warnings,
           ...(deletedSpecCount > 0 ? [`已删除 ${deletedSpecCount} 个Excel中不存在的规格`] : []),
           ...(imageErrors.length > 0 ? [`${imageErrors.length} 张图片处理失败`] : []),
         ],
@@ -833,6 +862,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 // ========== 工具函数 ==========
+
+function validateImportRows(rows: ExcelRowData[], colMap: Map<string, string>): string[] {
+  const errors: string[] = [];
+  const specLines = new Map<string, number>();
+  const groupSpecCounts = new Map<string, number>();
+  let prevGroupSku = "";
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const lineNum = i + 2;
+    let groupSku = String(getColValue(row, colMap, "产品组SKU") || "").trim();
+    const specSku = String(getColValue(row, colMap, "规格SKU") || "").trim()
+      || String(getColValue(row, colMap, "工厂编号") || "").trim();
+
+    if (!groupSku && specSku && prevGroupSku) {
+      groupSku = prevGroupSku;
+    }
+    if (!groupSku) {
+      continue;
+    }
+
+    prevGroupSku = groupSku;
+    if (!groupSpecCounts.has(groupSku)) {
+      groupSpecCounts.set(groupSku, 0);
+    }
+
+    if (!specSku) {
+      continue;
+    }
+
+    groupSpecCounts.set(groupSku, (groupSpecCounts.get(groupSku) || 0) + 1);
+    const key = `${groupSku}\u0000${specSku}`;
+    const firstLine = specLines.get(key);
+    if (firstLine) {
+      errors.push(`第${lineNum}行: 产品组 "${groupSku}" 下规格SKU "${specSku}" 与第${firstLine}行重复`);
+    } else {
+      specLines.set(key, lineNum);
+    }
+  }
+
+  for (const [groupSku, count] of groupSpecCounts) {
+    if (count === 0) {
+      errors.push(`产品组 "${groupSku}" 至少需要填写一条规格SKU或工厂编号`);
+    }
+  }
+
+  return errors;
+}
 
 async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
   const workbook = new ExcelJS.Workbook();
