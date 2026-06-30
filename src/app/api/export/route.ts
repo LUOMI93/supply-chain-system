@@ -34,7 +34,7 @@ function sanitizeSheetName(name: string, index: number): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const { error, user } = await requireAuth(["admin", "editor"]);
+    const { error } = await requireAuth(["admin", "editor"]);
     if (error) return error;
 
     const { searchParams } = new URL(req.url);
@@ -55,23 +55,10 @@ export async function GET(req: NextRequest) {
     if (!isNaN(id)) supplierIds = [id];
   }
 
-  // 1. 先查有权限的供应商（用于分 sheet）
+  // 1. 先查供应商（用于分 sheet），admin/editor 默认可导出全部数据
   const supplierWhere: Prisma.SupplierWhereInput = {};
   if (supplierIds.length > 0) {
     supplierWhere.id = { in: supplierIds };
-  }
-  if (user && user.role !== "admin") {
-    const visibleSupplierIds = await prisma.userSupplierVisibility.findMany({
-      where: { userId: user.id },
-      select: { supplierId: true },
-    });
-    const allowedIds = visibleSupplierIds.map((row) => row.supplierId);
-    if (allowedIds.length === 0) {
-      return NextResponse.json({ error: "没有可导出的供应商数据" }, { status: 403 });
-    }
-    supplierWhere.id = supplierWhere.id && typeof supplierWhere.id === "object" && "in" in supplierWhere.id
-      ? { in: ((supplierWhere.id as Prisma.IntFilter).in as number[]).filter((id) => allowedIds.includes(id)) }
-      : { in: allowedIds };
   }
   const suppliers = await prisma.supplier.findMany({
     where: supplierWhere,

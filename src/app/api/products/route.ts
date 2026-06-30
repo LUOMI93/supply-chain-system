@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "无效的产品 ID" }, { status: 400 });
     }
     const where: Prisma.ProductGroupWhereInput = { id, deletedAt: null };
-    if (user && user.role !== "admin") {
+    if (user?.role === "viewer") {
       where.supplierId = { in: await getVisibleSupplierIds(user.id) };
     }
     const product = await prisma.productGroup.findFirst({
@@ -59,8 +59,8 @@ export async function GET(req: NextRequest) {
     deletedAt: null,
   };
 
-  // 非 admin 用户：根据可见供应商过滤
-  if (user && user.role !== "admin") {
+  // viewer 用户：根据可见供应商过滤；editor 默认可见全部数据
+  if (user?.role === "viewer") {
     const visibleIds = await prisma.userSupplierVisibility.findMany({
       where: { userId: user.id },
       select: { supplierId: true },
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
   if (body.specs != null && !Array.isArray(body.specs)) {
     return NextResponse.json({ error: "规格数据格式不正确" }, { status: 400 });
   }
-  const supplierError = await validateWritableSupplier(user!, parsedSupplierId);
+  const supplierError = await validateSupplierExists(parsedSupplierId);
   if (supplierError) return supplierError;
 
   // 保存图片
@@ -249,10 +249,7 @@ export async function PUT(req: NextRequest) {
   if (!existing) {
     return NextResponse.json({ error: "产品不存在" }, { status: 404 });
   }
-  if (!(await canAccessSupplier(user!, existing.supplierId))) {
-    return NextResponse.json({ error: "无权编辑该产品" }, { status: 403 });
-  }
-  const supplierError = await validateWritableSupplier(user!, parsedSupplierId);
+  const supplierError = await validateSupplierExists(parsedSupplierId);
   if (supplierError) return supplierError;
 
   try {
@@ -421,17 +418,10 @@ export async function DELETE(req: NextRequest) {
     const uniqueIds = Array.from(new Set(numIds));
     const products = await prisma.productGroup.findMany({
       where: { id: { in: uniqueIds }, deletedAt: null },
-      select: { id: true, supplierId: true },
+      select: { id: true },
     });
     if (products.length !== uniqueIds.length) {
       return NextResponse.json({ error: "部分产品不存在或已删除" }, { status: 404 });
-    }
-    if (user!.role !== "admin") {
-      const visibleSupplierIds = await getVisibleSupplierIds(user!.id);
-      const visibleSet = new Set(visibleSupplierIds);
-      if (products.some((product) => !visibleSet.has(product.supplierId))) {
-        return NextResponse.json({ error: "无权删除部分产品" }, { status: 403 });
-      }
     }
 
     // 批量软删除
@@ -523,24 +513,10 @@ async function getVisibleSupplierIds(userId: number): Promise<number[]> {
   return rows.map((row) => row.supplierId);
 }
 
-async function canAccessSupplier(user: { id: number; role: string }, supplierId: number): Promise<boolean> {
-  if (user.role === "admin") return true;
-  const count = await prisma.userSupplierVisibility.count({
-    where: { userId: user.id, supplierId },
-  });
-  return count > 0;
-}
-
-async function validateWritableSupplier(
-  user: { id: number; role: string },
-  supplierId: number
-): Promise<NextResponse | null> {
+async function validateSupplierExists(supplierId: number): Promise<NextResponse | null> {
   const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
   if (!supplier) {
     return NextResponse.json({ error: "供应商不存在" }, { status: 400 });
-  }
-  if (!(await canAccessSupplier(user, supplierId))) {
-    return NextResponse.json({ error: "无权操作该供应商的数据" }, { status: 403 });
   }
   return null;
 }

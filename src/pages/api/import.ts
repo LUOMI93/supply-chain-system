@@ -9,6 +9,7 @@ import ExcelJS from "exceljs";
 import formidable from "formidable";
 
 type ExcelRowData = Record<string, unknown>;
+const SOURCE_ROW_NUMBER = "__sourceRowNumber";
 
 // ========== 工具函数（导入前校验/净化） ==========
 
@@ -286,15 +287,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const visibleSupplierIdSet = userRole === "admin"
-      ? null
-      : new Set(
-          (await prisma.userSupplierVisibility.findMany({
-            where: { userId },
-            select: { supplierId: true },
-          })).map((row) => row.supplierId)
-        );
-
     // 3. 解析用户手动填写的图片URL映射
     let imageUrlMap: Record<string, string[]> = {};
     if (imageUrlMapStr) {
@@ -330,7 +322,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const sku = String(getColValue(row, colMap, "产品组SKU") || "").trim();
         if (sku && !seenGroupSkus.has(sku)) {
           seenGroupSkus.add(sku);
-          groupLines.push(i + 2);
+          groupLines.push(getSourceRowNumber(row, i + 2));
         }
       }
       console.log(`[Import] 产品组行号:`, groupLines);
@@ -356,7 +348,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const lineNum = i + 2;
+        const lineNum = getSourceRowNumber(row, i + 2);
         const rowKey = String(lineNum);
 
         try {
@@ -420,17 +412,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             where: { name: supplierName },
           });
           if (!supplier) {
-            if (userRole !== "admin") {
-              errors.push(`第${lineNum}行: 供应商 "${supplierName}" 不存在，请联系管理员先创建并授权`);
-              continue;
-            }
             supplier = await tx.supplier.create({
               data: { name: supplierName },
             });
-          }
-          if (visibleSupplierIdSet && !visibleSupplierIdSet.has(supplier.id)) {
-            errors.push(`第${lineNum}行: 无权导入供应商 "${supplierName}" 的产品`);
-            continue;
           }
 
           const groupSku = rawGroupSku;
@@ -439,10 +423,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           let group = await tx.productGroup.findUnique({
             where: { sku: groupSku },
           });
-          if (group && visibleSupplierIdSet && !visibleSupplierIdSet.has(group.supplierId)) {
-            errors.push(`第${lineNum}行: 无权更新产品组 "${groupSku}"`);
-            continue;
-          }
 
           if (group) {
             // 更新现有记录 - 使用关系连接
@@ -871,7 +851,7 @@ function validateImportRows(rows: ExcelRowData[], colMap: Map<string, string>): 
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const lineNum = i + 2;
+    const lineNum = getSourceRowNumber(row, i + 2);
     let groupSku = String(getColValue(row, colMap, "产品组SKU") || "").trim();
     const specSku = String(getColValue(row, colMap, "规格SKU") || "").trim()
       || String(getColValue(row, colMap, "工厂编号") || "").trim();
@@ -920,7 +900,8 @@ async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
     return [];
   }
 
-  const headerRow = worksheet.getRow(1);
+  const headerRowNumber = findHeaderRowNumber(worksheet);
+  const headerRow = worksheet.getRow(headerRowNumber);
   const colCount = Math.max(worksheet.columnCount, headerRow.cellCount);
   const headers: Array<string | null> = [];
 
@@ -930,7 +911,7 @@ async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
   }
 
   const rows: ExcelRowData[] = [];
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber++) {
     const row = worksheet.getRow(rowNumber);
     const parsedRow: ExcelRowData = {};
     let hasData = false;
@@ -947,11 +928,41 @@ async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
     }
 
     if (hasData) {
+      Object.defineProperty(parsedRow, SOURCE_ROW_NUMBER, {
+        value: rowNumber,
+        enumerable: false,
+      });
       rows.push(parsedRow);
     }
   }
 
   return rows;
+}
+
+function findHeaderRowNumber(worksheet: ExcelJS.Worksheet): number {
+  const maxScanRows = Math.min(20, worksheet.rowCount);
+  for (let rowNumber = 1; rowNumber <= maxScanRows; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const values: string[] = [];
+    const colCount = Math.max(worksheet.columnCount, row.cellCount);
+    for (let col = 1; col <= colCount; col++) {
+      values.push(normalizeColName(getExcelCellText(row.getCell(col))));
+    }
+
+    if (
+      values.includes("产品组SKU") &&
+      values.includes("产品名称") &&
+      values.includes("供应商")
+    ) {
+      return rowNumber;
+    }
+  }
+  return 1;
+}
+
+function getSourceRowNumber(row: ExcelRowData, fallback: number): number {
+  const value = row[SOURCE_ROW_NUMBER];
+  return typeof value === "number" ? value : fallback;
 }
 
 function getExcelCellText(cell: ExcelJS.Cell): string {
