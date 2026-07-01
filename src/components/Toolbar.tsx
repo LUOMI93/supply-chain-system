@@ -1,11 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Download, Upload, Search, Columns, Trash2, Factory } from "lucide-react";
+import { Plus, Download, Upload, Search, Columns, Trash2, Factory, X } from "lucide-react";
 import { toast } from "sonner";
 import { GROUP_COLUMNS, SPEC_COLUMNS, COLUMN_PRESETS, type ColumnName } from "@/lib/constants";
 import type { SupplierListItem } from "@/lib/types";
@@ -15,6 +15,7 @@ interface ToolbarProps {
   search: string;
   onSearchChange: (v: string) => void;
   onSearch: () => void;
+  onClearSearch: () => void;
   supplierFilter: string;
   onSupplierFilterChange: (v: string) => void;
   suppliers: SupplierListItem[];
@@ -38,6 +39,7 @@ export function Toolbar({
   search,
   onSearchChange,
   onSearch,
+  onClearSearch,
   supplierFilter,
   onSupplierFilterChange,
   suppliers,
@@ -61,6 +63,7 @@ export function Toolbar({
   const [supplierSelectorOpen, setSupplierSelectorOpen] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const columnSelectorRef = useRef<HTMLDivElement>(null);
   const supplierFilterAllLabel = role === "viewer" ? "全部代号" : "全部供应商";
   const supplierSearchPlaceholder = role === "viewer" ? "搜索代号..." : "搜索供应商...";
 
@@ -68,6 +71,32 @@ export function Toolbar({
   const filteredSuppliers = suppliers.filter((s) =>
     s.name.toLowerCase().includes(supplierSearch.trim().toLowerCase())
   );
+  const hasSearchText = search.trim().length > 0;
+
+  function clearSearch() {
+    onClearSearch();
+  }
+
+  useEffect(() => {
+    if (!colSelectorOpen) return;
+
+    function handlePointerDown(e: PointerEvent) {
+      if (!columnSelectorRef.current?.contains(e.target as Node)) {
+        onToggleColSelector();
+      }
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onToggleColSelector();
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [colSelectorOpen, onToggleColSelector]);
 
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -150,24 +179,48 @@ export function Toolbar({
 
   return (
     <div className="flex gap-2 items-center flex-wrap">
-      <div className="relative flex-1 min-w-[200px] max-w-[320px]">
+      <div className="flex flex-1 min-w-[260px] max-w-[460px] rounded-lg border border-gray-200 bg-white shadow-sm focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/10">
+        <div className="relative flex-1 min-w-0">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
         <Input
-          className="pl-8 h-8 text-sm bg-white border-gray-200 focus:border-emerald-500 focus:ring-emerald-500/20"
-          placeholder="搜索产品名称 / SKU / 车型，按回车搜索"
+          className="h-8 border-0 bg-transparent pl-8 pr-8 text-sm shadow-none focus-visible:ring-0"
+          placeholder="搜索产品名称 / SKU / 车型"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") onSearch();
           }}
         />
+          {hasSearchText && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              title="清空搜索"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onSearch}
+          className="h-8 rounded-l-none rounded-r-lg bg-emerald-600 px-3 text-white hover:bg-emerald-700"
+        >
+          <Search className="mr-1 h-3.5 w-3.5" />
+          搜索
+        </Button>
       </div>
 
       <div className="relative">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setSupplierSelectorOpen(!supplierSelectorOpen)}
+          onClick={() => {
+            if (colSelectorOpen) onToggleColSelector();
+            setSupplierSelectorOpen(!supplierSelectorOpen);
+          }}
           className={`border-gray-200 h-8 px-3 ${supplierFilter ? "text-emerald-600 border-emerald-200 bg-emerald-50" : "text-gray-600 hover:bg-gray-50"}`}
         >
           <Factory className="w-3.5 h-3.5 mr-1" />
@@ -208,7 +261,9 @@ export function Toolbar({
                 }}
               >
                 <span>{supplierFilterAllLabel}</span>
-                <span className="text-xs text-gray-400">{suppliers.length}</span>
+                {role !== "viewer" && (
+                  <span className="text-xs text-gray-400">{suppliers.length}</span>
+                )}
               </button>
               {filteredSuppliers.map((s) => (
                 <button
@@ -222,7 +277,9 @@ export function Toolbar({
                   }}
                 >
                   <span className="truncate mr-2">{s.name}</span>
-                  <span className="text-xs text-gray-400 shrink-0">{s.productCount ?? 0}</span>
+                  {role !== "viewer" && (
+                    <span className="text-xs text-gray-400 shrink-0">{s.productCount ?? 0}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -230,39 +287,47 @@ export function Toolbar({
         )}
       </div>
 
-      <div className="relative">
-        <Button variant="outline" size="sm" onClick={onToggleColSelector} className="border-gray-200 text-gray-600 hover:bg-gray-50">
+      <div ref={columnSelectorRef} className="relative">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setSupplierSelectorOpen(false);
+            onToggleColSelector();
+          }}
+          className="border-gray-200 text-gray-600 hover:bg-gray-50"
+        >
           <Columns className="w-3.5 h-3.5 mr-1" /> 显示列
         </Button>
         {colSelectorOpen && (
           <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-50 w-[280px] max-h-[400px] overflow-y-auto smooth-appear">
-            <div className="flex gap-1 flex-wrap mb-2">
-              {Object.keys(COLUMN_PRESETS).map((name) => (
-                <Button key={name} variant="outline" size="sm" className="text-xs h-6 border-gray-200 text-gray-600 hover:border-emerald-300" onClick={() => onApplyPreset(name)}>
-                  {name}
-                </Button>
-              ))}
-            </div>
-            <div className="text-xs font-medium text-emerald-700 mb-1">产品组信息</div>
-            {GROUP_COLUMNS.map((col) => {
-              if (role === "viewer" && ["供应商", "产品链接", "备注"].includes(col)) return null;
-              return (
-                <label key={col} className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-emerald-50/50 rounded px-1">
-                  <Checkbox checked={selectedCols.includes(col)} onCheckedChange={() => onToggleCol(col)} className="h-3 w-3" />
-                  {col}
-                </label>
-              );
-            })}
-            <div className="text-xs font-medium text-emerald-700 mb-1 mt-2">规格信息</div>
-            {SPEC_COLUMNS.map((col) => {
-              if (role === "viewer" && col === "拿货价格(元)") return null;
-              return (
-                <label key={col} className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-emerald-50/50 rounded px-1">
-                  <Checkbox checked={selectedCols.includes(col)} onCheckedChange={() => onToggleCol(col)} className="h-3 w-3" />
-                  {col}
-                </label>
-              );
-            })}
+              <div className="flex gap-1 flex-wrap mb-2">
+                {Object.keys(COLUMN_PRESETS).map((name) => (
+                  <Button key={name} variant="outline" size="sm" className="text-xs h-6 border-gray-200 text-gray-600 hover:border-emerald-300" onClick={() => onApplyPreset(name)}>
+                    {name}
+                  </Button>
+                ))}
+              </div>
+              <div className="text-xs font-medium text-emerald-700 mb-1">产品组信息</div>
+              {GROUP_COLUMNS.map((col) => {
+                if (role === "viewer" && ["供应商", "产品链接", "备注"].includes(col)) return null;
+                return (
+                  <label key={col} className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-emerald-50/50 rounded px-1">
+                    <Checkbox checked={selectedCols.includes(col)} onCheckedChange={() => onToggleCol(col)} className="h-3 w-3" />
+                    {col}
+                  </label>
+                );
+              })}
+              <div className="text-xs font-medium text-emerald-700 mb-1 mt-2">规格信息</div>
+              {SPEC_COLUMNS.map((col) => {
+                if (role === "viewer" && col === "拿货价格(元)") return null;
+                return (
+                  <label key={col} className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-emerald-50/50 rounded px-1">
+                    <Checkbox checked={selectedCols.includes(col)} onCheckedChange={() => onToggleCol(col)} className="h-3 w-3" />
+                    {col}
+                  </label>
+                );
+              })}
           </div>
         )}
       </div>

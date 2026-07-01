@@ -1,6 +1,7 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { COLUMN_WIDTHS, isGroupCol, isSpecCol, type ColumnName } from "@/lib/constants";
@@ -30,21 +31,35 @@ export function ProductTable({
   onOpenLightbox,
   editMode = false,
 }: ProductTableProps) {
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<number>>(new Set());
   const displayCols = selectedCols.filter(
     (c) => !["产品组SKU", "产品图片"].includes(c) &&
     !(role === "viewer" && ["供应商", "产品链接", "拿货价格(元)", "备注"].includes(c))
   );
 
   const hasSelectionSupport = role !== "viewer" && editMode && !!onToggleProductSelection;
+  const collapsedSpecLimit = 3;
+
+  function toggleExpandedProduct(id: number) {
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   return (
-    <div className="border border-[#b9c6b7] rounded overflow-auto max-h-[calc(100vh-220px)]">
+    <div className="h-full min-h-0 overflow-auto border border-[#b9c6b7] rounded">
       <table className="w-full border-collapse text-sm min-w-[1300px]">
         <thead>
           <tr className="bg-[#dfeadf]">
             {hasSelectionSupport && (
               <th
-                className="sticky left-0 z-[12] bg-[#dfeadf] px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35]"
+                className="sticky left-0 top-0 z-[18] bg-[#dfeadf] px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35]"
                 style={{ minWidth: "40px", width: "40px" }}
               >
                 <Checkbox
@@ -72,13 +87,13 @@ export function ProductTable({
               </th>
             )}
             <th
-              className={`sticky z-[12] bg-[#dfeadf] px-2 py-2 text-left font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35] ${hasSelectionSupport ? "left-[40px]" : "left-0"}`}
+              className={`sticky top-0 z-[18] bg-[#dfeadf] px-2 py-2 text-left font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35] ${hasSelectionSupport ? "left-[40px]" : "left-0"}`}
               style={{ minWidth: "120px", width: "120px" }}
             >
               产品组SKU
             </th>
             <th
-              className={`sticky z-[12] bg-[#dfeadf] px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35] ${hasSelectionSupport ? "left-[160px]" : "left-[120px]"}`}
+              className={`sticky top-0 z-[18] bg-[#dfeadf] px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35] ${hasSelectionSupport ? "left-[160px]" : "left-[120px]"}`}
               style={{ minWidth: "78px", width: "78px" }}
             >
               图片
@@ -86,7 +101,7 @@ export function ProductTable({
             {displayCols.map((col) => (
               <th
                 key={col}
-                className="px-2 py-2 text-left font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35]"
+                className="sticky top-0 z-[12] bg-[#dfeadf] px-2 py-2 text-left font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35]"
                 style={
                   COLUMN_WIDTHS[col]
                     ? {
@@ -102,7 +117,7 @@ export function ProductTable({
             ))}
             {role !== "viewer" && (
               <th
-                className="px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35]"
+                className="sticky top-0 z-[12] bg-[#dfeadf] px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35]"
                 style={{ minWidth: "50px", width: "50px" }}
               >
                 操作
@@ -122,9 +137,15 @@ export function ProductTable({
               </tr>
             ) : (
               products.map((product, gi) => {
-                const specs = product.specs?.length
+                const allSpecs = product.specs?.length
                   ? product.specs
                   : [null as unknown as ProductListItem["specs"][number]];
+                const totalSpecs = allSpecs.length;
+                const isExpanded = expandedProductIds.has(product.id);
+                const specs =
+                  totalSpecs > collapsedSpecLimit && !isExpanded
+                    ? allSpecs.slice(0, collapsedSpecLimit)
+                    : allSpecs;
                 const N = specs.length;
                 return specs.map((spec, si) => {
                   const isFirst = si === 0;
@@ -140,7 +161,7 @@ export function ProductTable({
                       {hasSelectionSupport && isFirst && (
                         <td
                           rowSpan={N}
-                          className={`sticky z-[4] px-2 py-1.5 align-middle text-center border-b border-[#e8ede5] ${
+                          className={`sticky z-[4] px-2 py-1 align-middle text-center border-b border-[#e8ede5] ${
                             isSelected ? "bg-emerald-50/70" : rowClass
                           } ${hasSelectionSupport ? "left-0" : ""} !bg-[inherit]`}
                           style={{ minWidth: "40px", width: "40px" }}
@@ -155,27 +176,44 @@ export function ProductTable({
                       {isFirst && (
                         <td
                           rowSpan={N}
-                          className={`sticky z-[4] px-2 py-1.5 align-middle border-b border-[#e8ede5] ${
+                          className={`sticky z-[4] px-2 py-1 align-middle border-b border-[#e8ede5] ${
                             isSelected ? "bg-emerald-50/70" : rowClass
                           } ${hasSelectionSupport ? "left-[40px]" : "left-0"} !bg-[inherit]`}
                           style={{ minWidth: "120px", width: "120px" }}
                         >
-                          <span className="text-[#244b35] font-semibold text-sm">
-                            {product.sku}
-                          </span>
+                          <div className="space-y-1">
+                            <span className="block text-[#244b35] font-semibold text-sm">
+                              {product.sku}
+                            </span>
+                            {totalSpecs > collapsedSpecLimit && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandedProduct(product.id)}
+                                className="inline-flex items-center gap-1 rounded-md border border-teal-100 bg-teal-50 px-1.5 py-0.5 text-[11px] font-medium text-teal-700 hover:bg-teal-100"
+                                title={isExpanded ? "收起规格" : "展开全部规格"}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="h-3 w-3" />
+                                ) : (
+                                  <ChevronDown className="h-3 w-3" />
+                                )}
+                                {isExpanded ? "收起" : `共 ${totalSpecs} 个规格`}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       )}
                       {isFirst && (
                         <td
                           rowSpan={N}
-                          className={`sticky z-[4] px-2 py-1.5 align-middle text-center border-b border-[#e8ede5] ${
+                          className={`sticky z-[4] px-2 py-1 align-middle text-center border-b border-[#e8ede5] ${
                             isSelected ? "bg-emerald-50/70" : rowClass
                           } ${hasSelectionSupport ? "left-[160px]" : "left-[120px]"} !bg-[inherit]`}
                           style={{ minWidth: "78px", width: "78px" }}
                         >
                           {product.images?.length > 0 && product.images[0]?.filePath ? (
                             <div
-                              className="w-[100px] h-[90px] mx-auto rounded overflow-hidden cursor-pointer bg-[#dfeadf] relative"
+                              className="w-[72px] h-[56px] mx-auto rounded overflow-hidden cursor-pointer bg-[#dfeadf] relative"
                               onClick={() => onOpenLightbox(product)}
                             >
                               <img
@@ -204,7 +242,7 @@ export function ProductTable({
                             <td
                               key={col}
                               rowSpan={N}
-                              className={`px-2 py-1.5 align-middle border-b border-[#e8ede5] overflow-hidden text-ellipsis whitespace-nowrap ${
+                              className={`px-2 py-1 align-middle border-b border-[#e8ede5] overflow-hidden text-ellipsis whitespace-nowrap ${
                                 isSelected ? "bg-emerald-50/70" : ""
                               }`}
                               style={
@@ -222,7 +260,7 @@ export function ProductTable({
                           return (
                             <td
                               key={col}
-                              className={`px-2 py-1.5 align-middle border-b ${
+                              className={`px-2 py-1 align-middle border-b ${
                                 isLast ? "border-[#d0d8cc]" : "border-[#e8ede5]"
                               } text-sm ${isSelected ? "bg-emerald-50/70" : ""}`}
                               style={
@@ -240,7 +278,7 @@ export function ProductTable({
                       {isFirst && (
                         <td
                           rowSpan={N}
-                          className={`px-1 py-1.5 align-middle text-center border-b border-[#e8ede5] whitespace-nowrap ${
+                          className={`px-1 py-1 align-middle text-center border-b border-[#e8ede5] whitespace-nowrap ${
                             isSelected ? "bg-emerald-50/70" : ""
                           }`}
                           style={{ minWidth: "50px", width: "50px" }}
