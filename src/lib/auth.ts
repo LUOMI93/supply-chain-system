@@ -47,16 +47,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!user || !user.isActive) return null;
 
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+          return null;
+        }
+
         const valid = await bcrypt.compare(
           String(credentials.password),
           user.passwordHash
         );
 
-        if (!valid) return null;
+        if (!valid) {
+          const failedLoginCount = user.failedLoginCount + 1;
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              failedLoginCount,
+              lockedUntil:
+                failedLoginCount >= 5
+                  ? new Date(Date.now() + 15 * 60 * 1000)
+                  : null,
+            },
+          });
+          return null;
+        }
 
         await prisma.user.update({
           where: { id: user.id },
-          data: { lastLoginAt: new Date() },
+          data: {
+            lastLoginAt: new Date(),
+            failedLoginCount: 0,
+            lockedUntil: null,
+          },
         });
 
         return {

@@ -11,16 +11,12 @@
 
 ## 本地启动
 
-1. 安装依赖：
-
 ```bash
 pnpm install
-```
-
-2. 创建本地环境变量文件：
-
-```bash
 cp .env.example .env
+pnpm db:generate
+pnpm db:setup:dev
+pnpm dev
 ```
 
 Windows PowerShell 可使用：
@@ -29,35 +25,25 @@ Windows PowerShell 可使用：
 Copy-Item .env.example .env
 ```
 
-本地默认使用 SQLite：
-
-```env
-DATABASE_URL="file:./dev.db"
-```
-
-3. 初始化数据库并写入示例数据：
-
-```bash
-pnpm db:setup
-```
-
-这一步会执行：
-
-- `prisma generate`
-- `prisma db push`
-- `tsx scripts/seed.ts`
-
-4. 启动开发服务：
-
-```bash
-pnpm dev
-```
-
 本机访问：
 
 ```text
 http://localhost:3000
 ```
+
+`pnpm db:setup:dev` 会执行 `prisma migrate deploy`，并写入开发演示数据。
+
+## 开发演示账号
+
+以下账号只用于本地开发或一次性演示环境，禁止用于生产：
+
+```text
+admin  / admin123
+editor / editor123
+viewer / viewer123
+```
+
+生产环境请使用 `pnpm db:setup:prod` 和 `pnpm db:init:prod` 初始化，详见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ## 局域网临时访问
 
@@ -85,59 +71,55 @@ pnpm dev
 http://你的局域网IP:3000
 ```
 
-注意：`LAN_HOST` 只用于本地开发模式，换网络或换电脑后如果 IP 变化，需要同步更新 `.env` 并重启服务。
+`LAN_HOST` 只用于本地开发模式，换网络或换电脑后如果 IP 变化，需要同步更新 `.env` 并重启服务。
 
-## 服务器部署
+## 生产部署
 
-正式部署到服务器时，不要使用 `pnpm dev`。请使用生产模式：
+正式部署到服务器时，不要使用 `pnpm dev`，也不要运行开发 seed。推荐流程：
 
 ```bash
-pnpm install
-pnpm db:setup
+pnpm install --frozen-lockfile
+pnpm db:generate
+pnpm db:setup:prod
+pnpm db:init:prod
 pnpm build
 pnpm start
 ```
 
-生产环境建议使用域名和 HTTPS，并配置：
+生产环境必须配置：
 
 ```env
+NODE_ENV="production"
+DATABASE_URL="file:/var/lib/supply-chain/prod.db"
 AUTH_SECRET="your-random-secret"
 AUTH_TRUST_HOST="true"
 NEXTAUTH_URL="https://supply.example.com"
+UPLOAD_DIR="/var/lib/supply-chain/uploads"
+STORAGE_PROVIDER="local"
+ADMIN_PASSWORD="replace-with-a-strong-initial-password"
 ```
 
-如果暂时只有服务器 IP，也可以先使用：
-
-```env
-NEXTAUTH_URL="http://your-server-ip:3000"
-AUTH_TRUST_HOST="true"
-```
-
-生产环境请替换默认密钥：
-
-```bash
-openssl rand -base64 32
-```
-
-## 测试账号
-
-```text
-admin  / admin123
-editor / editor123
-viewer / viewer123
-```
+完整的 PM2/systemd、Nginx、HTTPS、备份恢复和 SQLite 到 PostgreSQL 升级说明见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ## 常用命令
 
 ```bash
-pnpm db:generate  # 生成 Prisma Client
-pnpm db:push      # 同步数据库结构
-pnpm seed         # 写入示例数据
-pnpm db:setup     # 初始化数据库并写入示例数据
-pnpm dev          # 启动开发服务
-pnpm build        # 构建生产版本
-pnpm start        # 启动生产服务
-pnpm lint         # 运行 ESLint
+pnpm db:generate    # 生成 Prisma Client
+pnpm db:push        # 手动同步数据库结构，仅用于本地临时调试
+pnpm db:migrate:dev # 创建/应用开发迁移
+pnpm db:migrate:deploy # 应用已提交迁移，生产使用
+pnpm seed           # 写入开发演示数据，生产环境默认拒绝运行
+pnpm db:setup:dev   # 初始化开发库并写入演示数据
+pnpm db:setup:prod  # 生产应用迁移，不写入演示数据
+pnpm db:init:prod   # 创建生产首个管理员
+pnpm backup:sqlite  # 备份 SQLite 数据库文件
+pnpm restore:sqlite # 从 BACKUP_PATH 或 BACKUP_FILE 恢复 SQLite 数据库文件
+pnpm prod:check     # 检查生产环境变量、数据库、上传目录和弱密码
+pnpm dev            # 启动开发服务
+pnpm build          # 构建生产版本
+pnpm start          # 启动生产服务
+pnpm lint           # 运行 ESLint
+pnpm deploy:check   # lint + build
 ```
 
 ## pnpm 构建脚本说明
@@ -154,4 +136,5 @@ pnpm lint         # 运行 ESLint
 - `.next/`
 - `node_modules/`
 - `prisma/dev.db`
+- `public/uploads/`
 - `next-env.d.ts`

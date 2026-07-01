@@ -7,6 +7,15 @@ import { writeFile, mkdir, readdir, unlink, rmdir, readFile } from "fs/promises"
 import path from "path";
 import ExcelJS from "exceljs";
 import formidable from "formidable";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_PRODUCT,
+  getUploadDirForSku,
+  getUploadPublicPath,
+  getUploadRoot,
+  parseImageDataUrl,
+  sanitizeSkuForFilename,
+} from "@/lib/uploads";
 
 type ExcelRowData = Record<string, unknown>;
 const SOURCE_ROW_NUMBER = "__sourceRowNumber";
@@ -99,11 +108,6 @@ function getColValue(
   return row[standardName];
 }
 
-// SKU 文件名净化：移除路径分隔符与特殊字符，防止路径穿越
-function sanitizeSkuForFilename(sku: string): string {
-  return sku.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
 // isPublic 解析：支持多种中英文表示法，大小写不敏感
 // 真值：是、对、公开、y、yes、true、1、Y、T、TRUE 等
 // 假值：否、不对、不公开、private、n、no、false、0、N、F、FALSE 等
@@ -182,7 +186,7 @@ function isPrivateOrLocalHost(hostname: string): boolean {
 }
 
 // 图片下载最大大小：10MB
-const MAX_IMAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_DOWNLOAD_BYTES = MAX_IMAGE_BYTES;
 
 // Pages Router body parser 配置：禁用默认 parser，由 formidable 处理
 // 支持最大 200MB 文件上传
@@ -719,7 +723,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 清理孤立图片（上次导入失败可能遗留的文件）
     try {
-      const uploadDir = path.join(process.cwd(), "public", "uploads");
+      const uploadDir = getUploadRoot();
       const entries = await readdir(uploadDir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
@@ -769,8 +773,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sortOrder: number;
         }> = [];
 
-        for (let j = 0; j < sources.length; j++) {
-          const src = sources[j];
+        const limitedSources = sources.slice(0, MAX_IMAGES_PER_PRODUCT);
+        if (sources.length > MAX_IMAGES_PER_PRODUCT) {
+          imageErrors.push(
+            `第${lineNum}行 (${groupSku}): 图片超过 ${MAX_IMAGES_PER_PRODUCT} 张，已跳过多余图片`
+          );
+        }
+
+        for (let j = 0; j < limitedSources.length; j++) {
+          const src = limitedSources[j];
           try {
             let filePath: string | null = null;
 
@@ -1129,30 +1140,17 @@ async function saveBase64Image(
   sku: string,
   index: number
 ): Promise<string> {
-  let ext = "png";
-  let base64Data = dataUrl;
-
-  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (matches) {
-    ext = matches[1] === "jpeg" ? "jpg" : matches[1];
-    base64Data = matches[2];
-  }
-
-  const buffer = Buffer.from(base64Data, "base64");
-
-  if (buffer.length < 4) {
-    throw new Error("无效的图片数据");
-  }
+  const { ext, buffer } = parseImageDataUrl(dataUrl);
 
   const safeSku = sanitizeSkuForFilename(sku);
-  const uploadDir = path.join(process.cwd(), "public", "uploads", safeSku);
+  const uploadDir = getUploadDirForSku(sku);
   await mkdir(uploadDir, { recursive: true });
 
   const filename = `${safeSku}_${index + 1}.${ext}`;
   const filePath = path.join(uploadDir, filename);
   await writeFile(filePath, new Uint8Array(buffer));
 
-  return `/uploads/${safeSku}/${filename}`;
+  return getUploadPublicPath(sku, filename);
 }
 
 // 下载 URL 图片并保存到文件系统
@@ -1231,14 +1229,14 @@ async function downloadAndSaveImage(
     }
 
     const safeSku = sanitizeSkuForFilename(sku);
-    const uploadDir = path.join(process.cwd(), "public", "uploads", safeSku);
+    const uploadDir = getUploadDirForSku(sku);
     await mkdir(uploadDir, { recursive: true });
 
     const filename = `${safeSku}_${index + 1}.${ext}`;
     const filePath = path.join(uploadDir, filename);
     await writeFile(filePath, new Uint8Array(buffer));
 
-    return `/uploads/${safeSku}/${filename}`;
+    return getUploadPublicPath(sku, filename);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "未知错误";
     console.error(`下载图片失败 [${url}]: ${msg}`);

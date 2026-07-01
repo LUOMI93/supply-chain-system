@@ -4,6 +4,12 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "true") {
+    throw new Error(
+      "Refusing to run demo seed in production. Use `pnpm db:init:prod` to create the initial admin user, or set ALLOW_DEMO_SEED=true only for a disposable demo environment."
+    );
+  }
+
   // ========== 1. 创建用户 ==========
   const adminHash = await bcrypt.hash("admin123", 12);
   const editorHash = await bcrypt.hash("editor123", 12);

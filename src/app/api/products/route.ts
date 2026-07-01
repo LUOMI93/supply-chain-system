@@ -3,7 +3,14 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-utils";
 import { writeFile, mkdir, unlink } from "fs/promises";
-import path from "path";
+import {
+  MAX_IMAGES_PER_PRODUCT,
+  getUploadDirForSku,
+  getUploadFilePath,
+  getUploadPublicPath,
+  parseImageDataUrl,
+  sanitizeSkuForFilename,
+} from "@/lib/uploads";
 
 // GET /api/products — 产品列表（分页 + 搜索）或单个产品（?id=）
 export async function GET(req: NextRequest) {
@@ -157,6 +164,9 @@ export async function POST(req: NextRequest) {
   // 保存图片
   const imageRecords: { filePath: string; fileSize: number; sortOrder: number }[] = [];
   if (images && Array.isArray(images)) {
+    if (images.length > MAX_IMAGES_PER_PRODUCT) {
+      return NextResponse.json({ error: `单个产品最多上传 ${MAX_IMAGES_PER_PRODUCT} 张图片` }, { status: 400 });
+    }
     for (let i = 0; i < images.length; i++) {
       const dataUrl = images[i];
       if (typeof dataUrl === "string" && dataUrl.startsWith("data:")) {
@@ -290,6 +300,9 @@ export async function PUT(req: NextRequest) {
     // 区分已有图片路径和新上传的 base64
     const newBase64Images: string[] = [];
     if (images && Array.isArray(images)) {
+      if (images.length > MAX_IMAGES_PER_PRODUCT) {
+        return NextResponse.json({ error: `单个产品最多上传 ${MAX_IMAGES_PER_PRODUCT} 张图片` }, { status: 400 });
+      }
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
         if (typeof img === "string" && img.startsWith("data:")) {
@@ -373,8 +386,7 @@ export async function PUT(req: NextRequest) {
 
     for (const oldPath of pathsToDelete) {
       try {
-        const fsPath = path.join(process.cwd(), "public", oldPath);
-        await unlink(fsPath);
+        await unlink(getUploadFilePath(oldPath));
       } catch {
         // 文件可能已不存在，忽略
       }
@@ -459,21 +471,17 @@ export async function DELETE(req: NextRequest) {
 
 // Helper: save base64 image to filesystem
 async function saveBase64Image(dataUrl: string, sku: string, index: number): Promise<string> {
-  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (!matches) throw new Error("Invalid data URL");
-
-  const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
-  const buffer = Buffer.from(matches[2], "base64");
+  const { ext, buffer } = parseImageDataUrl(dataUrl);
 
   const safeSku = sanitizeSkuForFilename(sku);
-  const uploadDir = path.join(process.cwd(), "public", "uploads", safeSku);
+  const uploadDir = getUploadDirForSku(sku);
   await mkdir(uploadDir, { recursive: true });
 
   const filename = `${safeSku}_${index + 1}.${ext}`;
-  const filePath = path.join(uploadDir, filename);
+  const filePath = `${uploadDir}/${filename}`;
   await writeFile(filePath, new Uint8Array(buffer));
 
-  return `/uploads/${safeSku}/${filename}`;
+  return getUploadPublicPath(sku, filename);
 }
 
 function toTrimmedString(value: unknown): string {
@@ -499,10 +507,6 @@ function buildSpecData(
     carModel: toTrimmedString(spec.carModel) || null,
     oeCode: toTrimmedString(spec.oeCode) || null,
   };
-}
-
-function sanitizeSkuForFilename(sku: string): string {
-  return sku.replace(/[^a-zA-Z0-9_-]/g, "_") || "product";
 }
 
 async function getVisibleSupplierIds(userId: number): Promise<number[]> {

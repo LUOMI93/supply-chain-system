@@ -148,7 +148,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-[11px] text-gray-400 text-center">
-              登录信息仅用于本地测试环境的身份验证。
+              登录信息仅用于系统身份验证。
             </p>
           </div>
         </div>

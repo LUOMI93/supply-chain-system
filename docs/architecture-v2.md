@@ -37,7 +37,7 @@
 | ORM | Prisma | **Prisma**（保留） | 已在使用，类型安全，迁移方便 |
 | 认证 | NextAuth v5 | **NextAuth v5**（保留+优化） | 修复后稳定，支持 JWT + 数据库 session |
 | 缓存 | 无 | **Redis** | 缓存 session、热点数据、减数据库压力 |
-| 文件存储 | 本地 `public/uploads` | **本地 OSS 双模式** | 已支持，建议生产切 OSS |
+| 文件存储 | 本地 `UPLOAD_DIR` | **本地持久化 + 未来 OSS** | 当前支持本地持久化，OSS 作为后续扩展 |
 | 部署 | 本地 `next dev` | **PM2 + Nginx 反向代理** | 进程守护、负载均衡、HTTPS 终止 |
 
 ---
