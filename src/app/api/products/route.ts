@@ -173,8 +173,9 @@ export async function POST(req: NextRequest) {
         try {
           const filePath = await saveBase64Image(dataUrl, sku, i);
           imageRecords.push({ filePath, fileSize: 0, sortOrder: i });
-        } catch {
-          // 跳过无效图片
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Invalid image";
+          return NextResponse.json({ error: `图片上传失败: ${message}` }, { status: 400 });
         }
       }
     }
@@ -320,8 +321,9 @@ export async function PUT(req: NextRequest) {
       try {
         const filePath = await saveBase64Image(dataUrl, sku, imageRecords.length);
         imageRecords.push({ filePath, fileSize: 0, sortOrder: imageRecords.length });
-      } catch {
-        // 跳过无效图片
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid image";
+        return NextResponse.json({ error: `图片上传失败: ${message}` }, { status: 400 });
       }
     }
 
