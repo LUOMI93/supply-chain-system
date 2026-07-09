@@ -5,6 +5,7 @@ import {
   copyDirectoryIfExists,
   getBackupRoot,
   getSqlitePath,
+  loadDotEnvIfPresent,
   pathExists,
   stamp,
 } from "./lib/ops";
@@ -31,6 +32,8 @@ async function pruneOldBackups(root: string, keep: number) {
 }
 
 async function main() {
+  loadDotEnvIfPresent();
+
   const backupRoot = getBackupRoot();
   const backupDir = path.join(backupRoot, stamp());
   await mkdir(backupDir, { recursive: true });

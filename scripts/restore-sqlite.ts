@@ -5,6 +5,7 @@ import {
   fsCp,
   getBackupRoot,
   getSqlitePath,
+  loadDotEnvIfPresent,
   pathExists,
   stamp,
 } from "./lib/ops";
@@ -36,6 +37,8 @@ async function backupCurrentDatabase(target: string) {
 }
 
 async function main() {
+  loadDotEnvIfPresent();
+
   const rawBackupPath = process.env.BACKUP_PATH?.trim() || process.env.BACKUP_FILE?.trim();
   if (!rawBackupPath) {
     throw new Error("Set BACKUP_PATH to a backup directory, or BACKUP_FILE to a SQLite .db file.");

@@ -1,4 +1,5 @@
 import { mkdir, rm, stat, writeFile } from "fs/promises";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 
 export const WEAK_PASSWORDS = [
@@ -22,6 +23,36 @@ export function getSqlitePath() {
   return path.isAbsolute(rawPath)
     ? rawPath
     : path.resolve(process.cwd(), "prisma", rawPath);
+}
+
+export function loadDotEnvIfPresent(envPath = path.resolve(process.cwd(), ".env")) {
+  if (!existsSync(envPath)) {
+    return;
+  }
+
+  const content = readFileSync(envPath, "utf8");
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const equalsIndex = line.indexOf("=");
+    if (equalsIndex < 0) continue;
+
+    const key = line.slice(0, equalsIndex).trim();
+    if (!key || process.env[key] !== undefined) continue;
+
+    process.env[key] = parseEnvValue(line.slice(equalsIndex + 1).trim());
+  }
+}
+
+function parseEnvValue(value: string) {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 export function getBackupRoot() {
