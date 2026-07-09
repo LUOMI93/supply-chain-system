@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { COLUMN_WIDTHS, isGroupCol, isSpecCol, type ColumnName } from "@/lib/constants";
-import { renderTableCell } from "@/lib/table-utils";
+import { getGroupCellValue, getSpecCellValue, renderTableCell } from "@/lib/table-utils";
 import type { ProductListItem } from "@/lib/types";
 
 interface ProductTableProps {
@@ -50,6 +50,12 @@ export function ProductTable({
       }
       return next;
     });
+  }
+
+  function getCellTitle(value: string | number | null | undefined) {
+    if (value === null || value === undefined) return undefined;
+    const text = String(value).trim();
+    return text && text !== "-" ? text : undefined;
   }
 
   return (
@@ -238,6 +244,7 @@ export function ProductTable({
                         if (isGroupCol(col)) {
                           if (!isFirst) return null;
                           const val = renderTableCell(product, null, col, role);
+                          const cellTitle = getCellTitle(getGroupCellValue(product, col));
                           return (
                             <td
                               key={col}
@@ -248,14 +255,14 @@ export function ProductTable({
                               style={
                                 COLUMN_WIDTHS[col] ? { maxWidth: COLUMN_WIDTHS[col] } : {}
                               }
-                              title={typeof val === "string" && val.length > 15 ? val : undefined}
+                              title={cellTitle}
                             >
                               {val}
                             </td>
                           );
                         }
                         if (isSpecCol(col)) {
-                          const cellVal = spec?.[col.toLowerCase().replace(/[()（）]/g, "").replace(/(元)/g, "") as keyof typeof spec] ?? "-";
+                          const cellVal = spec ? getSpecCellValue(spec, col) : null;
                           const displayVal = renderTableCell(product, spec, col, role);
                           return (
                             <td
@@ -266,7 +273,7 @@ export function ProductTable({
                               style={
                                 COLUMN_WIDTHS[col] ? { maxWidth: COLUMN_WIDTHS[col] } : {}
                               }
-                              title={typeof cellVal === "string" && cellVal !== "-" && String(cellVal).length > 15 ? cellVal : undefined}
+                              title={getCellTitle(cellVal)}
                             >
                               {displayVal}
                             </td>
