@@ -204,6 +204,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // getToken 需要 Record<string, string>，做类型转换
     req: { headers: req.headers as Record<string, string> },
     secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
+    secureCookie: process.env.NODE_ENV === "production",
   });
   if (!token?.id) {
     return res.status(401).json({ error: "请先登录" });
