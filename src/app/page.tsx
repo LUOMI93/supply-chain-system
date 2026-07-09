@@ -345,11 +345,11 @@ export default function HomePage() {
               </div>
               <div>
                 <h1 className="text-[17px] font-bold text-gray-800 leading-tight tracking-tight">
-                  {role === "viewer" ? "产品目录" : "供应链产品管理系统"}
+                  {role === "viewer" ? "臻伏汽配供应链产品目录" : "供应链产品管理系统"}
                 </h1>
                 <p className="text-[12px] text-gray-400 leading-tight mt-0.5">
                   {role === "viewer"
-                    ? "浏览可见产品、规格与适配车型"
+                    ? "源头工厂进驻 品类完善中"
                     : "Supply Chain Product Management Platform"}
                 </p>
               </div>
