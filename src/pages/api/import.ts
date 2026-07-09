@@ -7,6 +7,7 @@ import { writeFile, mkdir, readdir, unlink, rmdir, readFile } from "fs/promises"
 import path from "path";
 import ExcelJS from "exceljs";
 import formidable from "formidable";
+import JSZip from "jszip";
 import {
   MAX_IMAGE_BYTES,
   MAX_IMAGES_PER_PRODUCT,
@@ -925,8 +926,7 @@ function validateImportRows(rows: ExcelRowData[], colMap: Map<string, string>): 
 }
 
 async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  const workbook = await loadWorkbookForImportRows(buffer);
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
@@ -970,6 +970,92 @@ async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
   }
 
   return rows;
+}
+
+async function loadWorkbookForImportRows(buffer: Buffer): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    return workbook;
+  } catch (error) {
+    if (!isExcelDrawingParseError(error)) {
+      throw error;
+    }
+
+    console.log(
+      `[Import] ExcelJS failed while parsing workbook drawings, retrying rows without drawings: ${String(error)}`
+    );
+    const workbookWithoutDrawings = new ExcelJS.Workbook();
+    const sanitizedBuffer = await stripDrawingPartsForRowParsing(buffer);
+    await workbookWithoutDrawings.xlsx.load(
+      sanitizedBuffer as unknown as ExcelJS.Buffer
+    );
+    return workbookWithoutDrawings;
+  }
+}
+
+function isExcelDrawingParseError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
+  return /anchors|drawing|drawings/i.test(message);
+}
+
+async function stripDrawingPartsForRowParsing(buffer: Buffer): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(buffer);
+  const names = Object.keys(zip.files);
+
+  for (const name of names) {
+    if (
+      name.startsWith("xl/drawings/") ||
+      name.startsWith("xl/media/") ||
+      name.startsWith("xl/printerSettings/")
+    ) {
+      zip.remove(name);
+    }
+  }
+
+  for (const name of names) {
+    if (name.startsWith("xl/worksheets/") && name.endsWith(".xml")) {
+      const file = zip.file(name);
+      if (!file) continue;
+      const xml = await file.async("string");
+      zip.file(
+        name,
+        xml
+          .replace(/<drawing\b[^>]*\/>/g, "")
+          .replace(/<legacyDrawing\b[^>]*\/>/g, "")
+          .replace(/<picture\b[^>]*\/>/g, "")
+      );
+    }
+
+    if (name.startsWith("xl/worksheets/_rels/") && name.endsWith(".rels")) {
+      const file = zip.file(name);
+      if (!file) continue;
+      const xml = await file.async("string");
+      zip.file(
+        name,
+        xml.replace(
+          /<Relationship\b(?=[^>]*(?:\/relationships\/drawing|\/relationships\/vmlDrawing|\/drawings\/))[^>]*\/>/g,
+          ""
+        )
+      );
+    }
+
+    if (name === "[Content_Types].xml") {
+      const file = zip.file(name);
+      if (!file) continue;
+      const xml = await file.async("string");
+      zip.file(
+        name,
+        xml.replace(
+          /<Override\b(?=[^>]*PartName="\/xl\/drawings\/)[^>]*\/>/g,
+          ""
+        )
+      );
+    }
+  }
+
+  return zip.generateAsync({ type: "nodebuffer" });
 }
 
 function findHeaderRowNumber(worksheet: ExcelJS.Worksheet): number {
@@ -1130,9 +1216,188 @@ async function extractImagesByRow(
     )}`);
   } catch (e) {
     console.log(`[extractImagesByRow] ExcelJS failure: ${e}`);
-    // exceljs failure shouldn't block text data import
+    const fallbackImages = await extractImagesByRowFromXlsxZip(buffer);
+    if (fallbackImages.size > 0) {
+      return fallbackImages;
+    }
   }
   return imagesByRow;
+}
+
+async function extractImagesByRowFromXlsxZip(
+  buffer: Buffer
+): Promise<Map<number, Array<{ base64: string; ext: string }>>> {
+  const imagesByRow = new Map<number, Array<{ base64: string; ext: string }>>();
+
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const worksheetPath = await getFirstWorksheetPath(zip);
+    if (!worksheetPath) {
+      console.log("[extractImagesByRowFromXlsxZip] No first worksheet path found");
+      return imagesByRow;
+    }
+
+    const drawingPaths = await getWorksheetDrawingPaths(zip, worksheetPath);
+    for (const drawingPath of drawingPaths) {
+      const drawingFile = zip.file(drawingPath);
+      if (!drawingFile) continue;
+
+      const rels = await getRelationshipTargets(
+        zip,
+        getRelsPathForPart(drawingPath)
+      );
+      const drawingXml = await drawingFile.async("string");
+      const anchorRegex =
+        /<(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)\b[\s\S]*?<\/(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)>/g;
+      const anchors = drawingXml.match(anchorRegex) || [];
+
+      for (const anchorXml of anchors) {
+        const rowMatch = anchorXml.match(
+          /<(?:xdr:)?from>[\s\S]*?<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/
+        );
+        const embedMatch = anchorXml.match(
+          /<a:blip\b[^>]*(?:r:embed|embed)="([^"]+)"/
+        );
+        if (!rowMatch || !embedMatch) continue;
+
+        const rel = rels.get(embedMatch[1]);
+        if (!rel) continue;
+
+        const mediaPath = resolveZipTarget(path.posix.dirname(drawingPath), rel);
+        const mediaFile = zip.file(mediaPath);
+        if (!mediaFile) continue;
+
+        const mediaBuffer = await mediaFile.async("nodebuffer");
+        if (mediaBuffer.length > MAX_IMAGE_BYTES) {
+          console.log(
+            `[extractImagesByRowFromXlsxZip] Skipping oversized image ${mediaPath}`
+          );
+          continue;
+        }
+
+        const excelRow = Number(rowMatch[1]) + 1;
+        const ext =
+          path.posix
+            .extname(mediaPath)
+            .replace(".", "")
+            .toLowerCase()
+            .replace("jpeg", "jpg") || "png";
+
+        if (!imagesByRow.has(excelRow)) {
+          imagesByRow.set(excelRow, []);
+        }
+        imagesByRow.get(excelRow)!.push({
+          base64: mediaBuffer.toString("base64"),
+          ext,
+        });
+      }
+    }
+
+    console.log(
+      `[extractImagesByRowFromXlsxZip] Final imagesByRow: ${JSON.stringify(
+        Array.from(imagesByRow.entries()).map(
+          ([row, imgs]) => `row ${row}: ${imgs.length} images`
+        )
+      )}`
+    );
+  } catch (error) {
+    console.log(`[extractImagesByRowFromXlsxZip] Failure: ${error}`);
+  }
+
+  return imagesByRow;
+}
+
+async function getFirstWorksheetPath(zip: JSZip): Promise<string | null> {
+  const workbookFile = zip.file("xl/workbook.xml");
+  if (!workbookFile) return zip.file("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : null;
+
+  const workbookXml = await workbookFile.async("string");
+  const firstSheetRelId = workbookXml.match(/<sheet\b[^>]*(?:r:id|id)="([^"]+)"/)?.[1];
+  if (!firstSheetRelId) {
+    return zip.file("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : null;
+  }
+
+  const workbookRels = await getRelationshipTargets(
+    zip,
+    "xl/_rels/workbook.xml.rels"
+  );
+  const target = workbookRels.get(firstSheetRelId);
+  if (!target) return zip.file("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : null;
+
+  return resolveZipTarget("xl", target);
+}
+
+async function getWorksheetDrawingPaths(
+  zip: JSZip,
+  worksheetPath: string
+): Promise<string[]> {
+  const rels = await getRelationships(zip, getRelsPathForPart(worksheetPath));
+  return rels
+    .filter(
+      (rel) =>
+        /\/relationships\/drawing$/i.test(rel.type) ||
+        /\/drawings\/drawing/i.test(rel.target)
+    )
+    .map((rel) => resolveZipTarget(path.posix.dirname(worksheetPath), rel.target));
+}
+
+type XlsxRelationship = {
+  id: string;
+  type: string;
+  target: string;
+};
+
+async function getRelationshipTargets(
+  zip: JSZip,
+  relsPath: string
+): Promise<Map<string, string>> {
+  const rels = await getRelationships(zip, relsPath);
+  return new Map(rels.map((rel) => [rel.id, rel.target]));
+}
+
+async function getRelationships(
+  zip: JSZip,
+  relsPath: string
+): Promise<XlsxRelationship[]> {
+  const relsFile = zip.file(relsPath);
+  if (!relsFile) return [];
+
+  const relsXml = await relsFile.async("string");
+  const relationships: XlsxRelationship[] = [];
+  const relationshipRegex = /<Relationship\b([^>]*)\/>/g;
+  for (const match of relsXml.matchAll(relationshipRegex)) {
+    const attrs = parseXmlAttributes(match[1]);
+    if (attrs.Id && attrs.Target) {
+      relationships.push({
+        id: attrs.Id,
+        type: attrs.Type || "",
+        target: attrs.Target,
+      });
+    }
+  }
+  return relationships;
+}
+
+function parseXmlAttributes(rawAttrs: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const attrRegex = /([\w:.-]+)="([^"]*)"/g;
+  for (const match of rawAttrs.matchAll(attrRegex)) {
+    attrs[match[1]] = match[2];
+  }
+  return attrs;
+}
+
+function getRelsPathForPart(partPath: string): string {
+  const dir = path.posix.dirname(partPath);
+  const base = path.posix.basename(partPath);
+  return path.posix.join(dir, "_rels", `${base}.rels`);
+}
+
+function resolveZipTarget(sourceDir: string, target: string): string {
+  if (target.startsWith("/")) {
+    return target.replace(/^\/+/, "");
+  }
+  return path.posix.normalize(path.posix.join(sourceDir, target));
 }
 
 // 保存 Base64 图片到文件系统
