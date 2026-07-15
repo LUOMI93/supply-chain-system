@@ -1,5 +1,18 @@
 import type { NextConfig } from "next";
 
+function getAllowedDevOrigins() {
+  const lanHosts = (process.env.LAN_HOST || "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
+
+  return ["localhost", "127.0.0.1", ...lanHosts];
+}
+
+const allowedDevOrigins = [
+  ...getAllowedDevOrigins(),
+];
+
 const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
@@ -7,7 +20,7 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: "250mb",
   },
-  allowedDevOrigins: ["192.168.26.216", "localhost"],
+  allowedDevOrigins,
   turbopack: {
     root: process.cwd(),
     resolveAlias: {

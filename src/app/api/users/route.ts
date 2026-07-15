@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-utils";
 import { UserRole } from "@/lib/types";
+import { validatePasswordPolicy } from "@/lib/password-policy";
 import bcrypt from "bcryptjs";
 
 // GET /api/users - 获取用户列表（仅管理员）
@@ -16,6 +17,11 @@ export async function GET() {
       username: true,
       displayName: true,
       role: true,
+      isActive: true,
+      failedLoginCount: true,
+      lockedUntil: true,
+      mustChangePassword: true,
+      passwordUpdatedAt: true,
       createdAt: true,
       visibleSuppliers: {
         select: { supplierId: true },
@@ -29,6 +35,11 @@ export async function GET() {
       username: u.username,
       displayName: u.displayName,
       role: u.role,
+      isActive: u.isActive,
+      failedLoginCount: u.failedLoginCount,
+      lockedUntil: u.lockedUntil,
+      mustChangePassword: u.mustChangePassword,
+      passwordUpdatedAt: u.passwordUpdatedAt,
       productCount: 0,
       createdAt: u.createdAt,
       visibleSupplierIds: u.visibleSuppliers.map((v) => v.supplierId),
@@ -48,8 +59,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "用户名和密码为必填" }, { status: 400 });
   }
 
-  if (password.length < 8) {
-    return NextResponse.json({ error: "密码长度至少8位" }, { status: 400 });
+  const passwordError = validatePasswordPolicy(password);
+  if (passwordError) {
+    return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
   const validRoles: UserRole[] = ["admin", "editor", "viewer"];
@@ -70,6 +82,7 @@ export async function POST(req: NextRequest) {
       displayName: displayName?.trim() || null,
       passwordHash,
       role: userRole,
+      passwordUpdatedAt: new Date(),
     },
     select: {
       id: true,

@@ -7,8 +7,19 @@ import { writeFile, mkdir, readdir, unlink, rmdir, readFile } from "fs/promises"
 import path from "path";
 import ExcelJS from "exceljs";
 import formidable from "formidable";
+import JSZip from "jszip";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_PRODUCT,
+  getUploadDirForSku,
+  getUploadPublicPath,
+  getUploadRoot,
+  parseImageDataUrl,
+  sanitizeSkuForFilename,
+} from "@/lib/uploads";
 
 type ExcelRowData = Record<string, unknown>;
+const SOURCE_ROW_NUMBER = "__sourceRowNumber";
 
 // ========== 工具函数（导入前校验/净化） ==========
 
@@ -39,6 +50,8 @@ function normalizeColName(raw: string): string {
     "型号": "产品规格",
     // 拿货价格
     "拿货价": "拿货价格(元)",
+    "产品价格": "拿货价格(元)",
+    "产品价格(元)": "拿货价格(元)",
     "成本": "拿货价格(元)",
     "成本价": "拿货价格(元)",
     // 销售价格
@@ -94,11 +107,6 @@ function getColValue(
   if (actualKey) return row[actualKey];
   // fallback：直接读（向后兼容）
   return row[standardName];
-}
-
-// SKU 文件名净化：移除路径分隔符与特殊字符，防止路径穿越
-function sanitizeSkuForFilename(sku: string): string {
-  return sku.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
 // isPublic 解析：支持多种中英文表示法，大小写不敏感
@@ -179,7 +187,7 @@ function isPrivateOrLocalHost(hostname: string): boolean {
 }
 
 // 图片下载最大大小：10MB
-const MAX_IMAGE_DOWNLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_DOWNLOAD_BYTES = MAX_IMAGE_BYTES;
 
 // Pages Router body parser 配置：禁用默认 parser，由 formidable 处理
 // 支持最大 200MB 文件上传
@@ -197,6 +205,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // getToken 需要 Record<string, string>，做类型转换
     req: { headers: req.headers as Record<string, string> },
     secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
+    secureCookie: process.env.NODE_ENV === "production",
   });
   if (!token?.id) {
     return res.status(401).json({ error: "请先登录" });
@@ -279,6 +288,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
     }
 
+    const templateErrors = validateImportRows(rows, colMap);
+    if (templateErrors.length > 0) {
+      return res.status(400).json({
+        error: `导入失败，请先修正模板内容:\n${templateErrors.join("\n")}`,
+      });
+    }
+
     // 3. 解析用户手动填写的图片URL映射
     let imageUrlMap: Record<string, string[]> = {};
     if (imageUrlMapStr) {
@@ -314,7 +330,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const sku = String(getColValue(row, colMap, "产品组SKU") || "").trim();
         if (sku && !seenGroupSkus.has(sku)) {
           seenGroupSkus.add(sku);
-          groupLines.push(i + 2);
+          groupLines.push(getSourceRowNumber(row, i + 2));
         }
       }
       console.log(`[Import] 产品组行号:`, groupLines);
@@ -340,7 +356,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const lineNum = i + 2;
+        const lineNum = getSourceRowNumber(row, i + 2);
         const rowKey = String(lineNum);
 
         try {
@@ -370,6 +386,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (!rawGroupSku) {
             errors.push(`第${lineNum}行: 产品组SKU不能为空`);
             continue;
+          }
+
+          if (rawGroupSku !== prevGroupSku) {
+            for (const key of Object.keys(prevRowValues)) {
+              delete prevRowValues[key];
+            }
           }
 
           // 处理多规格行：同一产品组的后续行可以留空产品名称和供应商
@@ -698,12 +720,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new Error(`导入失败，已回滚所有操作:\n${errors.join("\n")}`);
       }
 
-      return { importedGroups, importedSpecs };
+      return { importedGroups, importedSpecs, warnings };
     }, { timeout: 120000 });
 
     // 清理孤立图片（上次导入失败可能遗留的文件）
     try {
-      const uploadDir = path.join(process.cwd(), "public", "uploads");
+      const uploadDir = getUploadRoot();
       const entries = await readdir(uploadDir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
@@ -753,8 +775,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           sortOrder: number;
         }> = [];
 
-        for (let j = 0; j < sources.length; j++) {
-          const src = sources[j];
+        const limitedSources = sources.slice(0, MAX_IMAGES_PER_PRODUCT);
+        if (sources.length > MAX_IMAGES_PER_PRODUCT) {
+          imageErrors.push(
+            `第${lineNum}行 (${groupSku}): 图片超过 ${MAX_IMAGES_PER_PRODUCT} 张，已跳过多余图片`
+          );
+        }
+
+        for (let j = 0; j < limitedSources.length; j++) {
+          const src = limitedSources[j];
           try {
             let filePath: string | null = null;
 
@@ -804,6 +833,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         deletedSpecs: deletedSpecCount,
         warnings: [
           ...importWarnings,
+          ...result.warnings,
           ...(deletedSpecCount > 0 ? [`已删除 ${deletedSpecCount} 个Excel中不存在的规格`] : []),
           ...(imageErrors.length > 0 ? [`${imageErrors.length} 张图片处理失败`] : []),
         ],
@@ -834,16 +864,77 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 // ========== 工具函数 ==========
 
+function validateImportRows(rows: ExcelRowData[], colMap: Map<string, string>): string[] {
+  const errors: string[] = [];
+  const specLines = new Map<string, number>();
+  const groupSpecCounts = new Map<string, number>();
+  const groupNames = new Map<string, { name: string; lineNum: number }>();
+  let prevGroupSku = "";
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const lineNum = getSourceRowNumber(row, i + 2);
+    let groupSku = String(getColValue(row, colMap, "产品组SKU") || "").trim();
+    const specSku = String(getColValue(row, colMap, "规格SKU") || "").trim()
+      || String(getColValue(row, colMap, "工厂编号") || "").trim();
+
+    if (!groupSku && specSku && prevGroupSku) {
+      groupSku = prevGroupSku;
+    }
+    if (!groupSku) {
+      continue;
+    }
+
+    prevGroupSku = groupSku;
+    if (!groupSpecCounts.has(groupSku)) {
+      groupSpecCounts.set(groupSku, 0);
+    }
+
+    const productName = String(getColValue(row, colMap, "产品名称") || "").trim();
+    if (productName) {
+      const existing = groupNames.get(groupSku);
+      if (existing && existing.name !== productName) {
+        errors.push(
+          `第${lineNum}行: 产品组SKU "${groupSku}" 的产品名称与第${existing.lineNum}行不一致（"${existing.name}" / "${productName}"），请为不同产品使用不同产品组SKU`
+        );
+      } else if (!existing) {
+        groupNames.set(groupSku, { name: productName, lineNum });
+      }
+    }
+
+    if (!specSku) {
+      continue;
+    }
+
+    groupSpecCounts.set(groupSku, (groupSpecCounts.get(groupSku) || 0) + 1);
+    const key = `${groupSku}\u0000${specSku}`;
+    const firstLine = specLines.get(key);
+    if (firstLine) {
+      errors.push(`第${lineNum}行: 产品组 "${groupSku}" 下规格SKU "${specSku}" 与第${firstLine}行重复`);
+    } else {
+      specLines.set(key, lineNum);
+    }
+  }
+
+  for (const [groupSku, count] of groupSpecCounts) {
+    if (count === 0) {
+      errors.push(`产品组 "${groupSku}" 至少需要填写一条规格SKU或工厂编号`);
+    }
+  }
+
+  return errors;
+}
+
 async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  const workbook = await loadWorkbookForImportRows(buffer);
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
     return [];
   }
 
-  const headerRow = worksheet.getRow(1);
+  const headerRowNumber = findHeaderRowNumber(worksheet);
+  const headerRow = worksheet.getRow(headerRowNumber);
   const colCount = Math.max(worksheet.columnCount, headerRow.cellCount);
   const headers: Array<string | null> = [];
 
@@ -853,7 +944,7 @@ async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
   }
 
   const rows: ExcelRowData[] = [];
-  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber++) {
     const row = worksheet.getRow(rowNumber);
     const parsedRow: ExcelRowData = {};
     let hasData = false;
@@ -870,11 +961,127 @@ async function parseExcelRows(buffer: Buffer): Promise<ExcelRowData[]> {
     }
 
     if (hasData) {
+      Object.defineProperty(parsedRow, SOURCE_ROW_NUMBER, {
+        value: rowNumber,
+        enumerable: false,
+      });
       rows.push(parsedRow);
     }
   }
 
   return rows;
+}
+
+async function loadWorkbookForImportRows(buffer: Buffer): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    return workbook;
+  } catch (error) {
+    if (!isExcelDrawingParseError(error)) {
+      throw error;
+    }
+
+    console.log(
+      `[Import] ExcelJS failed while parsing workbook drawings, retrying rows without drawings: ${String(error)}`
+    );
+    const workbookWithoutDrawings = new ExcelJS.Workbook();
+    const sanitizedBuffer = await stripDrawingPartsForRowParsing(buffer);
+    await workbookWithoutDrawings.xlsx.load(
+      sanitizedBuffer as unknown as ExcelJS.Buffer
+    );
+    return workbookWithoutDrawings;
+  }
+}
+
+function isExcelDrawingParseError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ""}` : String(error);
+  return /anchors|drawing|drawings/i.test(message);
+}
+
+async function stripDrawingPartsForRowParsing(buffer: Buffer): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(buffer);
+  const names = Object.keys(zip.files);
+
+  for (const name of names) {
+    if (
+      name.startsWith("xl/drawings/") ||
+      name.startsWith("xl/media/") ||
+      name.startsWith("xl/printerSettings/")
+    ) {
+      zip.remove(name);
+    }
+  }
+
+  for (const name of names) {
+    if (name.startsWith("xl/worksheets/") && name.endsWith(".xml")) {
+      const file = zip.file(name);
+      if (!file) continue;
+      const xml = await file.async("string");
+      zip.file(
+        name,
+        xml
+          .replace(/<drawing\b[^>]*\/>/g, "")
+          .replace(/<legacyDrawing\b[^>]*\/>/g, "")
+          .replace(/<picture\b[^>]*\/>/g, "")
+      );
+    }
+
+    if (name.startsWith("xl/worksheets/_rels/") && name.endsWith(".rels")) {
+      const file = zip.file(name);
+      if (!file) continue;
+      const xml = await file.async("string");
+      zip.file(
+        name,
+        xml.replace(
+          /<Relationship\b(?=[^>]*(?:\/relationships\/drawing|\/relationships\/vmlDrawing|\/drawings\/))[^>]*\/>/g,
+          ""
+        )
+      );
+    }
+
+    if (name === "[Content_Types].xml") {
+      const file = zip.file(name);
+      if (!file) continue;
+      const xml = await file.async("string");
+      zip.file(
+        name,
+        xml.replace(
+          /<Override\b(?=[^>]*PartName="\/xl\/drawings\/)[^>]*\/>/g,
+          ""
+        )
+      );
+    }
+  }
+
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+function findHeaderRowNumber(worksheet: ExcelJS.Worksheet): number {
+  const maxScanRows = Math.min(20, worksheet.rowCount);
+  for (let rowNumber = 1; rowNumber <= maxScanRows; rowNumber++) {
+    const row = worksheet.getRow(rowNumber);
+    const values: string[] = [];
+    const colCount = Math.max(worksheet.columnCount, row.cellCount);
+    for (let col = 1; col <= colCount; col++) {
+      values.push(normalizeColName(getExcelCellText(row.getCell(col))));
+    }
+
+    if (
+      values.includes("产品组SKU") &&
+      values.includes("产品名称") &&
+      values.includes("供应商")
+    ) {
+      return rowNumber;
+    }
+  }
+  return 1;
+}
+
+function getSourceRowNumber(row: ExcelRowData, fallback: number): number {
+  const value = row[SOURCE_ROW_NUMBER];
+  return typeof value === "number" ? value : fallback;
 }
 
 function getExcelCellText(cell: ExcelJS.Cell): string {
@@ -1009,9 +1216,188 @@ async function extractImagesByRow(
     )}`);
   } catch (e) {
     console.log(`[extractImagesByRow] ExcelJS failure: ${e}`);
-    // exceljs failure shouldn't block text data import
+    const fallbackImages = await extractImagesByRowFromXlsxZip(buffer);
+    if (fallbackImages.size > 0) {
+      return fallbackImages;
+    }
   }
   return imagesByRow;
+}
+
+async function extractImagesByRowFromXlsxZip(
+  buffer: Buffer
+): Promise<Map<number, Array<{ base64: string; ext: string }>>> {
+  const imagesByRow = new Map<number, Array<{ base64: string; ext: string }>>();
+
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const worksheetPath = await getFirstWorksheetPath(zip);
+    if (!worksheetPath) {
+      console.log("[extractImagesByRowFromXlsxZip] No first worksheet path found");
+      return imagesByRow;
+    }
+
+    const drawingPaths = await getWorksheetDrawingPaths(zip, worksheetPath);
+    for (const drawingPath of drawingPaths) {
+      const drawingFile = zip.file(drawingPath);
+      if (!drawingFile) continue;
+
+      const rels = await getRelationshipTargets(
+        zip,
+        getRelsPathForPart(drawingPath)
+      );
+      const drawingXml = await drawingFile.async("string");
+      const anchorRegex =
+        /<(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)\b[\s\S]*?<\/(?:xdr:)?(?:twoCellAnchor|oneCellAnchor)>/g;
+      const anchors = drawingXml.match(anchorRegex) || [];
+
+      for (const anchorXml of anchors) {
+        const rowMatch = anchorXml.match(
+          /<(?:xdr:)?from>[\s\S]*?<(?:xdr:)?row>(\d+)<\/(?:xdr:)?row>/
+        );
+        const embedMatch = anchorXml.match(
+          /<a:blip\b[^>]*(?:r:embed|embed)="([^"]+)"/
+        );
+        if (!rowMatch || !embedMatch) continue;
+
+        const rel = rels.get(embedMatch[1]);
+        if (!rel) continue;
+
+        const mediaPath = resolveZipTarget(path.posix.dirname(drawingPath), rel);
+        const mediaFile = zip.file(mediaPath);
+        if (!mediaFile) continue;
+
+        const mediaBuffer = await mediaFile.async("nodebuffer");
+        if (mediaBuffer.length > MAX_IMAGE_BYTES) {
+          console.log(
+            `[extractImagesByRowFromXlsxZip] Skipping oversized image ${mediaPath}`
+          );
+          continue;
+        }
+
+        const excelRow = Number(rowMatch[1]) + 1;
+        const ext =
+          path.posix
+            .extname(mediaPath)
+            .replace(".", "")
+            .toLowerCase()
+            .replace("jpeg", "jpg") || "png";
+
+        if (!imagesByRow.has(excelRow)) {
+          imagesByRow.set(excelRow, []);
+        }
+        imagesByRow.get(excelRow)!.push({
+          base64: mediaBuffer.toString("base64"),
+          ext,
+        });
+      }
+    }
+
+    console.log(
+      `[extractImagesByRowFromXlsxZip] Final imagesByRow: ${JSON.stringify(
+        Array.from(imagesByRow.entries()).map(
+          ([row, imgs]) => `row ${row}: ${imgs.length} images`
+        )
+      )}`
+    );
+  } catch (error) {
+    console.log(`[extractImagesByRowFromXlsxZip] Failure: ${error}`);
+  }
+
+  return imagesByRow;
+}
+
+async function getFirstWorksheetPath(zip: JSZip): Promise<string | null> {
+  const workbookFile = zip.file("xl/workbook.xml");
+  if (!workbookFile) return zip.file("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : null;
+
+  const workbookXml = await workbookFile.async("string");
+  const firstSheetRelId = workbookXml.match(/<sheet\b[^>]*(?:r:id|id)="([^"]+)"/)?.[1];
+  if (!firstSheetRelId) {
+    return zip.file("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : null;
+  }
+
+  const workbookRels = await getRelationshipTargets(
+    zip,
+    "xl/_rels/workbook.xml.rels"
+  );
+  const target = workbookRels.get(firstSheetRelId);
+  if (!target) return zip.file("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : null;
+
+  return resolveZipTarget("xl", target);
+}
+
+async function getWorksheetDrawingPaths(
+  zip: JSZip,
+  worksheetPath: string
+): Promise<string[]> {
+  const rels = await getRelationships(zip, getRelsPathForPart(worksheetPath));
+  return rels
+    .filter(
+      (rel) =>
+        /\/relationships\/drawing$/i.test(rel.type) ||
+        /\/drawings\/drawing/i.test(rel.target)
+    )
+    .map((rel) => resolveZipTarget(path.posix.dirname(worksheetPath), rel.target));
+}
+
+type XlsxRelationship = {
+  id: string;
+  type: string;
+  target: string;
+};
+
+async function getRelationshipTargets(
+  zip: JSZip,
+  relsPath: string
+): Promise<Map<string, string>> {
+  const rels = await getRelationships(zip, relsPath);
+  return new Map(rels.map((rel) => [rel.id, rel.target]));
+}
+
+async function getRelationships(
+  zip: JSZip,
+  relsPath: string
+): Promise<XlsxRelationship[]> {
+  const relsFile = zip.file(relsPath);
+  if (!relsFile) return [];
+
+  const relsXml = await relsFile.async("string");
+  const relationships: XlsxRelationship[] = [];
+  const relationshipRegex = /<Relationship\b([^>]*)\/>/g;
+  for (const match of relsXml.matchAll(relationshipRegex)) {
+    const attrs = parseXmlAttributes(match[1]);
+    if (attrs.Id && attrs.Target) {
+      relationships.push({
+        id: attrs.Id,
+        type: attrs.Type || "",
+        target: attrs.Target,
+      });
+    }
+  }
+  return relationships;
+}
+
+function parseXmlAttributes(rawAttrs: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const attrRegex = /([\w:.-]+)="([^"]*)"/g;
+  for (const match of rawAttrs.matchAll(attrRegex)) {
+    attrs[match[1]] = match[2];
+  }
+  return attrs;
+}
+
+function getRelsPathForPart(partPath: string): string {
+  const dir = path.posix.dirname(partPath);
+  const base = path.posix.basename(partPath);
+  return path.posix.join(dir, "_rels", `${base}.rels`);
+}
+
+function resolveZipTarget(sourceDir: string, target: string): string {
+  if (target.startsWith("/")) {
+    return target.replace(/^\/+/, "");
+  }
+  return path.posix.normalize(path.posix.join(sourceDir, target));
 }
 
 // 保存 Base64 图片到文件系统
@@ -1020,30 +1406,17 @@ async function saveBase64Image(
   sku: string,
   index: number
 ): Promise<string> {
-  let ext = "png";
-  let base64Data = dataUrl;
-
-  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (matches) {
-    ext = matches[1] === "jpeg" ? "jpg" : matches[1];
-    base64Data = matches[2];
-  }
-
-  const buffer = Buffer.from(base64Data, "base64");
-
-  if (buffer.length < 4) {
-    throw new Error("无效的图片数据");
-  }
+  const { ext, buffer } = parseImageDataUrl(dataUrl);
 
   const safeSku = sanitizeSkuForFilename(sku);
-  const uploadDir = path.join(process.cwd(), "public", "uploads", safeSku);
+  const uploadDir = getUploadDirForSku(sku);
   await mkdir(uploadDir, { recursive: true });
 
   const filename = `${safeSku}_${index + 1}.${ext}`;
   const filePath = path.join(uploadDir, filename);
   await writeFile(filePath, new Uint8Array(buffer));
 
-  return `/uploads/${safeSku}/${filename}`;
+  return getUploadPublicPath(sku, filename);
 }
 
 // 下载 URL 图片并保存到文件系统
@@ -1122,14 +1495,14 @@ async function downloadAndSaveImage(
     }
 
     const safeSku = sanitizeSkuForFilename(sku);
-    const uploadDir = path.join(process.cwd(), "public", "uploads", safeSku);
+    const uploadDir = getUploadDirForSku(sku);
     await mkdir(uploadDir, { recursive: true });
 
     const filename = `${safeSku}_${index + 1}.${ext}`;
     const filePath = path.join(uploadDir, filename);
     await writeFile(filePath, new Uint8Array(buffer));
 
-    return `/uploads/${safeSku}/${filename}`;
+    return getUploadPublicPath(sku, filename);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "未知错误";
     console.error(`下载图片失败 [${url}]: ${msg}`);

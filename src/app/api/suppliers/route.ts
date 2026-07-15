@@ -7,9 +7,9 @@ export async function GET() {
   const { error, user } = await requireAuth();
   if (error) return error;
 
-  // 非 admin 用户：根据可见供应商过滤（visibleIds 为空时不可见任何供应商）
+  // viewer 用户：根据可见供应商过滤；editor 默认可见全部供应商
   let supplierIdsFilter: number[] | undefined;
-  if (user && user.role !== "admin") {
+  if (user?.role === "viewer") {
     const visibleIds = await prisma.userSupplierVisibility.findMany({
       where: { userId: user.id },
       select: { supplierId: true },
@@ -24,24 +24,37 @@ export async function GET() {
     orderBy: { name: "asc" },
     include: {
       _count: { select: { groups: { where: { deletedAt: null } } } },
+      groups: {
+        where: { deletedAt: null },
+        select: { sku: true },
+        orderBy: { id: "asc" },
+        take: 1,
+      },
     },
   });
 
   return NextResponse.json({
     data: suppliers.map((s) => ({
       id: s.id,
-      name: s.name,
-      contact: s.contact,
-      remark: s.remark,
+      name: user?.role === "viewer" ? getSupplierAlias(s.groups[0]?.sku, s.id) : s.name,
+      contact: user?.role === "viewer" ? null : s.contact,
+      remark: user?.role === "viewer" ? null : s.remark,
       productCount: s._count.groups,
       createdAt: s.createdAt,
     })),
   });
 }
 
+function getSupplierAlias(sku: string | undefined, supplierId: number): string {
+  if (!sku) return `S${supplierId}`;
+  const prefix = sku.trim().match(/^[A-Za-z]+/)?.[0];
+  if (prefix) return prefix.toUpperCase();
+  return sku.split("-")[0] || `S${supplierId}`;
+}
+
 // POST /api/suppliers — 新增供应商
 export async function POST(req: NextRequest) {
-  const { error, user } = await requireAuth(["admin"]);
+  const { error, user } = await requireAuth(["admin", "editor"]);
   if (error) return error;
 
   try {
@@ -87,7 +100,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/suppliers — 批量删除供应商
 export async function DELETE(req: NextRequest) {
-  const { error, user } = await requireAuth(["admin"]);
+  const { error, user } = await requireAuth(["admin", "editor"]);
   if (error) return error;
 
   try {

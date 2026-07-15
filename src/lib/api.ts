@@ -71,7 +71,12 @@ export async function fetchProducts(params: {
 }
 
 export async function fetchProduct(id: number): Promise<ProductListItem> {
-  return request<ProductListItem>(`/api/products/${id}`);
+  const response = await request<ApiResponse<ProductListItem[]>>(`/api/products?id=${id}`);
+  const product = response.data?.[0];
+  if (!product) {
+    throw new ApiError("产品不存在", 404, response);
+  }
+  return product;
 }
 
 export async function createProduct(
@@ -87,14 +92,17 @@ export async function updateProduct(
   id: number,
   data: ProductFormData
 ): Promise<ProductListItem> {
-  return request<ProductListItem>(`/api/products/${id}`, {
+  return request<ProductListItem>("/api/products", {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, id }),
   });
 }
 
 export async function deleteProduct(id: number): Promise<void> {
-  await request(`/api/products/${id}`, { method: "DELETE" });
+  await request("/api/products", {
+    method: "DELETE",
+    body: JSON.stringify({ ids: [id] }),
+  });
 }
 
 // 批量删除产品

@@ -47,16 +47,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!user || !user.isActive) return null;
 
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+          return null;
+        }
+
         const valid = await bcrypt.compare(
           String(credentials.password),
           user.passwordHash
         );
 
-        if (!valid) return null;
+        if (!valid) {
+          const failedLoginCount = user.failedLoginCount + 1;
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              failedLoginCount,
+              lockedUntil:
+                failedLoginCount >= 5
+                  ? new Date(Date.now() + 15 * 60 * 1000)
+                  : null,
+            },
+          });
+          return null;
+        }
 
         await prisma.user.update({
           where: { id: user.id },
-          data: { lastLoginAt: new Date() },
+          data: {
+            lastLoginAt: new Date(),
+            failedLoginCount: 0,
+            lockedUntil: null,
+          },
         });
 
         return {
@@ -69,6 +90,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+
+      const target = new URL(url);
+      const base = new URL(baseUrl);
+
+      if (target.origin === base.origin || isLocalNetworkHost(target.hostname)) {
+        return url;
+      }
+
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.role = user.role;
@@ -98,3 +131,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   useSecureCookies: process.env.NODE_ENV === "production",
   trustHost: true,
 });
+
+function isLocalNetworkHost(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}

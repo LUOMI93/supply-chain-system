@@ -155,8 +155,8 @@ export default function UsersPage() {
       toast.error("新建用户必须设置密码");
       return;
     }
-    if (formPassword && formPassword.length < 8) {
-      toast.error("密码长度至少8位");
+    if (formPassword && formPassword.length < 12) {
+      toast.error("密码长度至少 12 位");
       return;
     }
 
@@ -284,7 +284,8 @@ export default function UsersPage() {
                   <th className="px-4 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600">显示名称</th>
                   <th className="px-4 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600 w-24">角色</th>
 
-                  <th className="px-4 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600 w-36">创建时间</th>
+                  <th className="px-4 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600 w-32">状态</th>
+                  <th className="px-4 py-2.5 text-left font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600 w-36">密码更新</th>
                   <th className="px-4 py-2.5 text-center font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600 w-16">可见</th>
                   <th className="px-4 py-2.5 text-center font-semibold text-gray-500 uppercase tracking-wider text-[11px] border-b-2 border-emerald-600 w-24">操作</th>
                 </tr>
@@ -310,8 +311,17 @@ export default function UsersPage() {
                       </span>
                     </td>
 
+                    <td className="px-4 py-2.5 border-b border-gray-100 text-xs">
+                      {u.lockedUntil && new Date(u.lockedUntil) > new Date() ? (
+                        <span className="text-red-600">已锁定</span>
+                      ) : (u.failedLoginCount || 0) > 0 ? (
+                        <span className="text-amber-600">失败 {u.failedLoginCount} 次</span>
+                      ) : (
+                        <span className="text-emerald-700">正常</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 border-b border-gray-100 text-xs text-gray-500">
-                      {new Date(u.createdAt).toLocaleDateString("zh-CN")}
+                      {u.passwordUpdatedAt ? new Date(u.passwordUpdatedAt).toLocaleDateString("zh-CN") : "-"}
                     </td>
                     <td className="px-4 py-2.5 border-b border-gray-100 text-center">
                       <Button
@@ -403,9 +413,9 @@ export default function UsersPage() {
                 type="password"
                 value={formPassword}
                 onChange={(e) => setFormPassword(e.target.value)}
-                placeholder={editingUser ? "留空则不修改" : "至少8位"}
+                placeholder={editingUser ? "留空则不修改" : "至少 12 位，包含字母和数字"}
                 required={!editingUser}
-                minLength={editingUser ? undefined : 8}
+                minLength={editingUser ? undefined : 12}
                 className="focus:border-emerald-500 focus:ring-emerald-500/20"
               />
             </div>

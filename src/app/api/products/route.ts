@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAuth, getSessionUser } from "@/lib/auth-utils";
+import { requireAuth } from "@/lib/auth-utils";
 import { writeFile, mkdir, unlink } from "fs/promises";
-import path from "path";
+import {
+  MAX_IMAGES_PER_PRODUCT,
+  getUploadDirForSku,
+  getUploadFilePath,
+  getUploadPublicPath,
+  parseImageDataUrl,
+  sanitizeSkuForFilename,
+} from "@/lib/uploads";
 
 // GET /api/products — 产品列表（分页 + 搜索）或单个产品（?id=）
 export async function GET(req: NextRequest) {
@@ -19,8 +26,12 @@ export async function GET(req: NextRequest) {
     if (isNaN(id)) {
       return NextResponse.json({ error: "无效的产品 ID" }, { status: 400 });
     }
+    const where: Prisma.ProductGroupWhereInput = { id, deletedAt: null };
+    if (user?.role === "viewer") {
+      where.supplierId = { in: await getVisibleSupplierIds(user.id) };
+    }
     const product = await prisma.productGroup.findFirst({
-      where: { id, deletedAt: null },
+      where,
       include: {
         supplier: true,
         specs: { orderBy: { id: "asc" } },
@@ -55,8 +66,8 @@ export async function GET(req: NextRequest) {
     deletedAt: null,
   };
 
-  // 非 admin 用户：根据可见供应商过滤
-  if (user && user.role !== "admin") {
+  // viewer 用户：根据可见供应商过滤；editor 默认可见全部数据
+  if (user?.role === "viewer") {
     const visibleIds = await prisma.userSupplierVisibility.findMany({
       where: { userId: user.id },
       select: { supplierId: true },
@@ -136,43 +147,49 @@ export async function POST(req: NextRequest) {
   if (error) return error;
 
   const body = await req.json();
-  const { sku, supplierId, name, productLink, productWeight, productSize, packageSize, packageWeight, boxQuantity, isPublic, remark, specs, images } = body;
+  const { productLink, productWeight, productSize, packageSize, packageWeight, boxQuantity, isPublic, remark, images } = body;
+  const sku = toTrimmedString(body.sku);
+  const name = toTrimmedString(body.name);
+  const parsedSupplierId = parsePositiveInt(body.supplierId);
 
-  if (!sku || !name || !supplierId) {
+  if (!sku || !name || !parsedSupplierId) {
     return NextResponse.json({ error: "SKU、产品名称、供应商为必填" }, { status: 400 });
   }
+  if (body.specs != null && !Array.isArray(body.specs)) {
+    return NextResponse.json({ error: "规格数据格式不正确" }, { status: 400 });
+  }
+  const supplierError = await validateSupplierExists(parsedSupplierId);
+  if (supplierError) return supplierError;
 
   // 保存图片
   const imageRecords: { filePath: string; fileSize: number; sortOrder: number }[] = [];
   if (images && Array.isArray(images)) {
+    if (images.length > MAX_IMAGES_PER_PRODUCT) {
+      return NextResponse.json({ error: `单个产品最多上传 ${MAX_IMAGES_PER_PRODUCT} 张图片` }, { status: 400 });
+    }
     for (let i = 0; i < images.length; i++) {
       const dataUrl = images[i];
       if (typeof dataUrl === "string" && dataUrl.startsWith("data:")) {
         try {
           const filePath = await saveBase64Image(dataUrl, sku, i);
           imageRecords.push({ filePath, fileSize: 0, sortOrder: i });
-        } catch {
-          // 跳过无效图片
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Invalid image";
+          return NextResponse.json({ error: `图片上传失败: ${message}` }, { status: 400 });
         }
       }
     }
   }
 
-  const specCreateData: Prisma.ProductSpecCreateWithoutGroupInput[] = (specs || []).map((s: Record<string, unknown>) => ({
-    sku: String(s.sku || `${sku}-${Date.now()}`),
-    factoryCode: s.factoryCode ? String(s.factoryCode) : null,
-    spec: s.spec ? String(s.spec) : null,
-    costPrice: s.costPrice != null ? String(s.costPrice) : null,
-    salePrice: s.salePrice != null ? String(s.salePrice) : null,
-    carModel: s.carModel ? String(s.carModel) : null,
-    oeCode: s.oeCode ? String(s.oeCode) : null,
-  }));
+  const specCreateData: Prisma.ProductSpecCreateWithoutGroupInput[] = (body.specs || []).map((s: Record<string, unknown>, index: number) =>
+    buildSpecData(s, sku, index)
+  );
 
   try {
     const product = await prisma.productGroup.create({
       data: {
         sku,
-        supplierId: parseInt(supplierId),
+        supplierId: parsedSupplierId,
         name,
         productLink: productLink || null,
         productWeight: productWeight || null,
@@ -217,15 +234,21 @@ export async function PUT(req: NextRequest) {
   if (error) return error;
 
   const body = await req.json();
-  const { id, sku, supplierId, name, productLink, productWeight, productSize, packageSize, packageWeight, boxQuantity, isPublic, remark, specs, images } = body;
+  const { id, productLink, productWeight, productSize, packageSize, packageWeight, boxQuantity, isPublic, remark, images } = body;
+  const sku = toTrimmedString(body.sku);
+  const name = toTrimmedString(body.name);
+  const parsedSupplierId = parsePositiveInt(body.supplierId);
 
   const productId = parseInt(id);
   if (isNaN(productId)) {
     return NextResponse.json({ error: "无效的产品 ID" }, { status: 400 });
   }
 
-  if (!sku || !name || !supplierId) {
+  if (!sku || !name || !parsedSupplierId) {
     return NextResponse.json({ error: "SKU、产品名称、供应商为必填" }, { status: 400 });
+  }
+  if (body.specs != null && !Array.isArray(body.specs)) {
+    return NextResponse.json({ error: "规格数据格式不正确" }, { status: 400 });
   }
 
   // 查找现有产品
@@ -237,6 +260,8 @@ export async function PUT(req: NextRequest) {
   if (!existing) {
     return NextResponse.json({ error: "产品不存在" }, { status: 404 });
   }
+  const supplierError = await validateSupplierExists(parsedSupplierId);
+  if (supplierError) return supplierError;
 
   try {
     // 处理规格：找出需要创建、更新、删除的
@@ -244,38 +269,29 @@ export async function PUT(req: NextRequest) {
     const specUpdates: { id: number; data: Prisma.ProductSpecUpdateInput }[] = [];
     const specCreates: Prisma.ProductSpecCreateWithoutGroupInput[] = [];
 
-    if (specs && Array.isArray(specs)) {
-      for (const s of specs) {
-        if (s.id && typeof s.id === "number") {
-          incomingSpecIds.push(s.id);
+    const existingSpecIds = existing.specs.map((s) => s.id);
+    const existingSpecIdSet = new Set(existingSpecIds);
+
+    if (body.specs && Array.isArray(body.specs)) {
+      for (let index = 0; index < body.specs.length; index++) {
+        const s = body.specs[index] as Record<string, unknown>;
+        const specId = parsePositiveInt(s.id);
+        if (specId) {
+          if (!existingSpecIdSet.has(specId)) {
+            return NextResponse.json({ error: "规格 ID 与当前产品不匹配" }, { status: 400 });
+          }
+          incomingSpecIds.push(specId);
           specUpdates.push({
-            id: s.id,
-            data: {
-              sku: String(s.sku || `${sku}-${Date.now()}`),
-              factoryCode: s.factoryCode != null ? String(s.factoryCode) : null,
-              spec: s.spec != null ? String(s.spec) : null,
-              costPrice: s.costPrice != null ? String(s.costPrice) : null,
-              salePrice: s.salePrice != null ? String(s.salePrice) : null,
-              carModel: s.carModel != null ? String(s.carModel) : null,
-              oeCode: s.oeCode != null ? String(s.oeCode) : null,
-            },
+            id: specId,
+            data: buildSpecData(s, sku, index),
           });
         } else {
-          specCreates.push({
-            sku: String(s.sku || `${sku}-${Date.now()}`),
-            factoryCode: s.factoryCode != null ? String(s.factoryCode) : null,
-            spec: s.spec != null ? String(s.spec) : null,
-            costPrice: s.costPrice != null ? String(s.costPrice) : null,
-            salePrice: s.salePrice != null ? String(s.salePrice) : null,
-            carModel: s.carModel != null ? String(s.carModel) : null,
-            oeCode: s.oeCode != null ? String(s.oeCode) : null,
-          });
+          specCreates.push(buildSpecData(s, sku, index));
         }
       }
     }
 
     // 删除不再需要的规格
-    const existingSpecIds = existing.specs.map((s) => s.id);
     const specIdsToDelete = existingSpecIds.filter((id) => !incomingSpecIds.includes(id));
 
     // 处理图片：删除旧图片，保存新图片
@@ -285,6 +301,9 @@ export async function PUT(req: NextRequest) {
     // 区分已有图片路径和新上传的 base64
     const newBase64Images: string[] = [];
     if (images && Array.isArray(images)) {
+      if (images.length > MAX_IMAGES_PER_PRODUCT) {
+        return NextResponse.json({ error: `单个产品最多上传 ${MAX_IMAGES_PER_PRODUCT} 张图片` }, { status: 400 });
+      }
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
         if (typeof img === "string" && img.startsWith("data:")) {
@@ -302,30 +321,22 @@ export async function PUT(req: NextRequest) {
       try {
         const filePath = await saveBase64Image(dataUrl, sku, imageRecords.length);
         imageRecords.push({ filePath, fileSize: 0, sortOrder: imageRecords.length });
-      } catch {
-        // 跳过无效图片
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Invalid image";
+        return NextResponse.json({ error: `图片上传失败: ${message}` }, { status: 400 });
       }
     }
 
-    // 删除不再引用的旧图片文件（仅删除文件系统上的，数据库通过 onDelete: Cascade 或手动删）
+    // 事务成功后再删除不再引用的旧图片文件，避免数据库回滚后图片先被删掉
     const keptPaths = new Set(imageRecords.filter((r) => r.filePath.startsWith("/")).map((r) => r.filePath));
-    for (const oldPath of oldImagePaths) {
-      if (!keptPaths.has(oldPath)) {
-        try {
-          const fsPath = path.join(process.cwd(), "public", oldPath);
-          await unlink(fsPath);
-        } catch {
-          // 文件可能已不存在，忽略
-        }
-      }
-    }
+    const pathsToDelete = oldImagePaths.filter((oldPath) => !keptPaths.has(oldPath));
 
     // 在事务中执行所有操作
     const product = await prisma.$transaction(async (tx) => {
       // 删除不再需要的规格
       if (specIdsToDelete.length > 0) {
         await tx.productSpec.deleteMany({
-          where: { id: { in: specIdsToDelete } },
+          where: { id: { in: specIdsToDelete }, groupId: productId },
         });
       }
 
@@ -347,7 +358,7 @@ export async function PUT(req: NextRequest) {
         where: { id: productId },
         data: {
           sku,
-          supplierId: parseInt(supplierId),
+          supplierId: parsedSupplierId,
           name,
           productLink: productLink || null,
           productWeight: productWeight || null,
@@ -375,6 +386,14 @@ export async function PUT(req: NextRequest) {
       },
     });
 
+    for (const oldPath of pathsToDelete) {
+      try {
+        await unlink(getUploadFilePath(oldPath));
+      } catch {
+        // 文件可能已不存在，忽略
+      }
+    }
+
     return NextResponse.json(product);
   } catch (e: unknown) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
@@ -401,15 +420,28 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "请选择要删除的产品" }, { status: 400 });
     }
 
-    const numIds = ids.map((id: unknown) => parseInt(String(id))).filter((n: number) => !isNaN(n));
+    const numIds: number[] = [];
+    for (const id of ids) {
+      const parsed = parsePositiveInt(id);
+      if (parsed) numIds.push(parsed);
+    }
     if (numIds.length === 0) {
       return NextResponse.json({ error: "无效的产品 ID" }, { status: 400 });
+    }
+
+    const uniqueIds = Array.from(new Set(numIds));
+    const products = await prisma.productGroup.findMany({
+      where: { id: { in: uniqueIds }, deletedAt: null },
+      select: { id: true },
+    });
+    if (products.length !== uniqueIds.length) {
+      return NextResponse.json({ error: "部分产品不存在或已删除" }, { status: 404 });
     }
 
     // 批量软删除
     const updated = await prisma.productGroup.updateMany({
       where: {
-        id: { in: numIds },
+        id: { in: uniqueIds },
         deletedAt: null, // 不重复删除
       },
       data: { deletedAt: new Date() },
@@ -441,18 +473,56 @@ export async function DELETE(req: NextRequest) {
 
 // Helper: save base64 image to filesystem
 async function saveBase64Image(dataUrl: string, sku: string, index: number): Promise<string> {
-  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
-  if (!matches) throw new Error("Invalid data URL");
+  const { ext, buffer } = parseImageDataUrl(dataUrl);
 
-  const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
-  const buffer = Buffer.from(matches[2], "base64");
-
-  const uploadDir = path.join(process.cwd(), "public", "uploads", sku);
+  const safeSku = sanitizeSkuForFilename(sku);
+  const uploadDir = getUploadDirForSku(sku);
   await mkdir(uploadDir, { recursive: true });
 
-  const filename = `${sku}_${index + 1}.${ext}`;
-  const filePath = path.join(uploadDir, filename);
+  const filename = `${safeSku}_${index + 1}.${ext}`;
+  const filePath = `${uploadDir}/${filename}`;
   await writeFile(filePath, new Uint8Array(buffer));
 
-  return `/uploads/${sku}/${filename}`;
+  return getUploadPublicPath(sku, filename);
+}
+
+function toTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : String(value ?? "").trim();
+}
+
+function parsePositiveInt(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildSpecData(
+  spec: Record<string, unknown>,
+  groupSku: string,
+  index: number
+): Prisma.ProductSpecCreateWithoutGroupInput {
+  return {
+    sku: toTrimmedString(spec.sku) || `${groupSku}-${index + 1}`,
+    factoryCode: toTrimmedString(spec.factoryCode) || null,
+    spec: toTrimmedString(spec.spec) || null,
+    costPrice: spec.costPrice != null ? toTrimmedString(spec.costPrice) || null : null,
+    salePrice: spec.salePrice != null ? toTrimmedString(spec.salePrice) || null : null,
+    carModel: toTrimmedString(spec.carModel) || null,
+    oeCode: toTrimmedString(spec.oeCode) || null,
+  };
+}
+
+async function getVisibleSupplierIds(userId: number): Promise<number[]> {
+  const rows = await prisma.userSupplierVisibility.findMany({
+    where: { userId },
+    select: { supplierId: true },
+  });
+  return rows.map((row) => row.supplierId);
+}
+
+async function validateSupplierExists(supplierId: number): Promise<NextResponse | null> {
+  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+  if (!supplier) {
+    return NextResponse.json({ error: "供应商不存在" }, { status: 400 });
+  }
+  return null;
 }

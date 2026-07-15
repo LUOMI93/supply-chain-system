@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-utils";
 import { readFile } from "fs/promises";
-import path from "path";
+import { getUploadFilePath } from "@/lib/uploads";
 
 // 产品数据列定义（"产品图片"列不填文字，图片直接嵌入单元格）
 const getColumns = () => [
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     if (!isNaN(id)) supplierIds = [id];
   }
 
-  // 1. 先查所有供应商（用于分 sheet）
+  // 1. 先查供应商（用于分 sheet），admin/editor 默认可导出全部数据
   const supplierWhere: Prisma.SupplierWhereInput = {};
   if (supplierIds.length > 0) {
     supplierWhere.id = { in: supplierIds };
@@ -78,14 +78,13 @@ export async function GET(req: NextRequest) {
   workbook.created = new Date();
 
   const imageCache = new Map<string, Buffer>();
-  const publicDir = path.join(process.cwd(), "public");
 
   async function loadImageBuffer(filePath: string): Promise<Buffer | null> {
     if (imageCache.has(filePath)) {
       return imageCache.get(filePath)!;
     }
     try {
-      const fullPath = path.join(publicDir, filePath);
+      const fullPath = getUploadFilePath(filePath);
       const buf = await readFile(fullPath);
       imageCache.set(filePath, buf);
       return buf;

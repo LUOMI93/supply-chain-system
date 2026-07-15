@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "true") {
+    throw new Error(
+      "Refusing to create default demo users in production. Use `pnpm db:init:prod` with ADMIN_USERNAME and ADMIN_PASSWORD instead."
+    );
+  }
+
   console.log("检查并创建测试用户...");
 
   // 检查现有用户数量

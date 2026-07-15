@@ -7,7 +7,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, user } = await requireAuth(["admin"]);
+  const { error, user } = await requireAuth(["admin", "editor"]);
   if (error) return error;
 
   try {
@@ -71,7 +71,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error, user } = await requireAuth(["admin"]);
+  const { error, user } = await requireAuth(["admin", "editor"]);
   if (error) return error;
 
   try {

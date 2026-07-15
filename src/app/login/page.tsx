@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,26 +13,37 @@ export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
+  async function handleLogin(form: HTMLFormElement) {
+    if (loading) return;
 
-    const form = new FormData(e.currentTarget);
-    const result = await signIn("credentials", {
-      username: String(form.get("username") || ""),
-      password: String(form.get("password") || ""),
-      redirect: false,
-    });
+    const formData = new FormData(form);
+    const username = String(formData.get("username") || "").trim();
+    const password = String(formData.get("password") || "");
 
-    setLoading(false);
-
-    if (result?.error) {
-      toast.error("用户名或密码错误");
+    if (!username || !password) {
+      toast.error("请输入用户名和密码");
       return;
     }
 
-    router.replace("/");
-    router.refresh();
+    setLoading(true);
+
+    try {
+      await signIn("credentials", {
+        username,
+        password,
+        redirectTo: `${window.location.origin}/`,
+      });
+      router.replace("/");
+      window.setTimeout(() => {
+        if (window.location.pathname === "/login") {
+          window.location.assign("/");
+        }
+      }, 300);
+    } catch {
+      toast.error("登录失败，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -66,7 +77,14 @@ export default function LoginPage() {
               <p className="text-sm text-gray-500 mt-1">请登录账号继续</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form
+              method="post"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleLogin(e.currentTarget);
+              }}
+              className="space-y-5"
+            >
               <div className="space-y-2">
                 <Label htmlFor="username" className="text-[13px] font-medium text-gray-600 ml-1">
                   用户名
@@ -130,7 +148,7 @@ export default function LoginPage() {
             </div>
 
             <p className="text-[11px] text-gray-400 text-center">
-              登录信息仅用于本地测试环境的身份验证。
+              登录信息仅用于系统身份验证。
             </p>
           </div>
         </div>

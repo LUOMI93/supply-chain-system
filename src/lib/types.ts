@@ -73,6 +73,11 @@ export interface UserListItem {
   username: string;
   displayName: string | null;
   role: UserRole;
+  isActive?: boolean;
+  failedLoginCount?: number;
+  lockedUntil?: Date | string | null;
+  mustChangePassword?: boolean;
+  passwordUpdatedAt?: Date | string | null;
   productCount: number;
   createdAt: Date | string;
   visibleSupplierIds?: number[];

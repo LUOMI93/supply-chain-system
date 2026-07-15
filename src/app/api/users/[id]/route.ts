@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-utils";
+import { validatePasswordPolicy } from "@/lib/password-policy";
 import bcrypt from "bcryptjs";
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -23,6 +24,11 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
       username: true,
       displayName: true,
       role: true,
+      isActive: true,
+      failedLoginCount: true,
+      lockedUntil: true,
+      mustChangePassword: true,
+      passwordUpdatedAt: true,
       createdAt: true,
       visibleSuppliers: { select: { supplierId: true } },
     },
@@ -68,10 +74,15 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     updateData.role = role;
   }
   if (password) {
-    if (password.length < 8) {
-      return NextResponse.json({ error: "密码长度至少8位" }, { status: 400 });
+    const passwordError = validatePasswordPolicy(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
     updateData.passwordHash = await bcrypt.hash(password, 10);
+    updateData.passwordUpdatedAt = new Date();
+    updateData.failedLoginCount = 0;
+    updateData.lockedUntil = null;
+    updateData.mustChangePassword = false;
   }
 
   if (visibleSupplierIds !== undefined) {
@@ -90,7 +101,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
   const updated = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      id: true, username: true, displayName: true, role: true, createdAt: true,
+      id: true, username: true, displayName: true, role: true, isActive: true,
+      failedLoginCount: true, lockedUntil: true, mustChangePassword: true,
+      passwordUpdatedAt: true, createdAt: true,
       visibleSuppliers: { select: { supplierId: true } },
     },
   });

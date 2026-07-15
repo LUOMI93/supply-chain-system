@@ -20,7 +20,21 @@ export default function RootLayout({
       <body className="min-h-full bg-[#fffefa] text-[#17211a]">
         <GlobalErrorSuppressor />
         <AuthProvider>
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <div className="flex min-h-screen flex-col">
+            <main className="flex-1">
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </main>
+            <footer className="border-t border-black/5 bg-white/70 px-4 py-3 text-center text-xs text-gray-500">
+              <a
+                href="https://beian.miit.gov.cn/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-gray-700"
+              >
+                粤ICP备2026092334号-1
+              </a>
+            </footer>
+          </div>
           <Toaster position="bottom-center" />
         </AuthProvider>
       </body>
