@@ -2,6 +2,8 @@
 
 供应链产品管理系统，基于 Next.js、Prisma 和 SQLite。
 
+系统 1.0 的业务模型、实现细节、历史问题和 2.0 重构基线见 [docs/SYSTEM_V1_OVERVIEW.md](docs/SYSTEM_V1_OVERVIEW.md)。
+
 ## 环境要求
 
 - Node.js 20 或 22 LTS
