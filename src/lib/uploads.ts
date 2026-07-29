@@ -1,6 +1,8 @@
+import { MAX_IMAGES_PER_PRODUCT } from "@/lib/constants";
+
 export const UPLOAD_PUBLIC_PREFIX = "/uploads";
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-export const MAX_IMAGES_PER_PRODUCT = 12;
+export { MAX_IMAGES_PER_PRODUCT };
 export const ALLOWED_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp"]);
 
 export function getUploadRoot() {

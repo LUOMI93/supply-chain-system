@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search } from "lucide-react";
-import { formatPrice } from "@/lib/utils";
+import { formatRoundedPrice } from "@/lib/utils";
 
 interface ProductGroup {
   id: number;
@@ -94,7 +94,7 @@ export default function CatalogPage() {
                     )}
                     <div className="flex items-center justify-between pt-1">
                       {firstSpec?.salePrice != null && (
-                        <span className="text-[#8b4513] font-semibold">{formatPrice(firstSpec.salePrice)}</span>
+                        <span className="text-[#8b4513] font-semibold">{formatRoundedPrice(firstSpec.salePrice)}</span>
                       )}
                     </div>
                   </CardContent>

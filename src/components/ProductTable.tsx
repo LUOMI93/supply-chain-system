@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { COLUMN_WIDTHS, isGroupCol, isSpecCol, type ColumnName } from "@/lib/constants";
 import { getGroupCellValue, getSpecCellValue, renderTableCell } from "@/lib/table-utils";
 import type { ProductListItem } from "@/lib/types";
+import { formatRoundedPrice } from "@/lib/utils";
 
 interface ProductTableProps {
   products: ProductListItem[];
@@ -93,14 +94,16 @@ export function ProductTable({
               </th>
             )}
             <th
-              className={`sticky top-0 z-[18] bg-[#dfeadf] px-2 py-2 text-left font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35] ${hasSelectionSupport ? "left-[40px]" : "left-0"}`}
-              style={{ minWidth: "120px", width: "120px" }}
+              className={`sticky top-0 z-[18] w-[92px] min-w-[92px] bg-[#dfeadf] px-2 py-2 text-left text-sm font-bold whitespace-nowrap border-b-2 border-[#244b35] sm:w-[120px] sm:min-w-[120px] ${hasSelectionSupport ? "left-[40px]" : "left-0"}`}
             >
               产品组SKU
             </th>
             <th
-              className={`sticky top-0 z-[18] bg-[#dfeadf] px-2 py-2 text-center font-bold text-sm whitespace-nowrap border-b-2 border-[#244b35] ${hasSelectionSupport ? "left-[160px]" : "left-[120px]"}`}
-              style={{ minWidth: "78px", width: "78px" }}
+              className={`sticky top-0 z-[18] w-[58px] min-w-[58px] bg-[#dfeadf] px-1 py-2 text-center text-sm font-bold whitespace-nowrap border-b-2 border-[#244b35] sm:w-[78px] sm:min-w-[78px] sm:px-2 ${
+                hasSelectionSupport
+                  ? "left-[132px] sm:left-[160px]"
+                  : "left-[92px] sm:left-[120px]"
+              }`}
             >
               图片
             </th>
@@ -156,13 +159,17 @@ export function ProductTable({
                 return specs.map((spec, si) => {
                   const isFirst = si === 0;
                   const isLast = si === N - 1;
-                  const rowClass = `${gi % 2 === 1 ? "bg-[#f7faf4]" : "bg-white"} hover:bg-[#fafdf8]`;
+                  const rowClass = `${gi % 2 === 1 ? "bg-[#eef5eb]" : "bg-white"} hover:bg-[#f6faf3]`;
+                  const groupBoundaryClass =
+                    isFirst && gi > 0
+                      ? "[&>td]:border-t-[3px] [&>td]:border-t-[#8fa592]"
+                      : "";
                   const isSelected = selectedProductIds.includes(product.id);
 
                   return (
                     <tr
                       key={`${product.id}-${spec?.id ?? si}`}
-                      className={`${rowClass} ${isSelected ? "!bg-emerald-50/70" : ""}`}
+                      className={`${rowClass} ${groupBoundaryClass} ${isSelected ? "!bg-emerald-50/70" : ""}`}
                     >
                       {hasSelectionSupport && isFirst && (
                         <td
@@ -182,10 +189,9 @@ export function ProductTable({
                       {isFirst && (
                         <td
                           rowSpan={N}
-                          className={`sticky z-[4] px-2 py-1 align-middle border-b border-[#e8ede5] ${
+                          className={`sticky z-[4] px-2 py-1 align-middle border-b border-[#e8ede5] shadow-[inset_4px_0_0_#6f8e76] ${
                             isSelected ? "bg-emerald-50/70" : rowClass
-                          } ${hasSelectionSupport ? "left-[40px]" : "left-0"} !bg-[inherit]`}
-                          style={{ minWidth: "120px", width: "120px" }}
+                          } ${hasSelectionSupport ? "left-[40px]" : "left-0"} w-[92px] min-w-[92px] !bg-[inherit] sm:w-[120px] sm:min-w-[120px]`}
                         >
                           <div className="space-y-1">
                             <span className="block text-[#244b35] font-semibold text-sm">
@@ -212,14 +218,17 @@ export function ProductTable({
                       {isFirst && (
                         <td
                           rowSpan={N}
-                          className={`sticky z-[4] px-2 py-1 align-middle text-center border-b border-[#e8ede5] ${
+                          className={`sticky z-[4] w-[58px] min-w-[58px] px-1 py-1 align-middle text-center border-b border-[#e8ede5] sm:w-[78px] sm:min-w-[78px] sm:px-2 ${
                             isSelected ? "bg-emerald-50/70" : rowClass
-                          } ${hasSelectionSupport ? "left-[160px]" : "left-[120px]"} !bg-[inherit]`}
-                          style={{ minWidth: "78px", width: "78px" }}
+                          } ${
+                            hasSelectionSupport
+                              ? "left-[132px] sm:left-[160px]"
+                              : "left-[92px] sm:left-[120px]"
+                          } !bg-[inherit]`}
                         >
                           {product.images?.length > 0 && product.images[0]?.filePath ? (
                             <div
-                              className="w-[72px] h-[56px] mx-auto rounded overflow-hidden cursor-pointer bg-[#dfeadf] relative"
+                              className="relative mx-auto h-[44px] w-[52px] cursor-pointer overflow-hidden rounded bg-[#dfeadf] sm:h-[56px] sm:w-[72px]"
                               onClick={() => onOpenLightbox(product)}
                             >
                               <img
@@ -264,6 +273,10 @@ export function ProductTable({
                         if (isSpecCol(col)) {
                           const cellVal = spec ? getSpecCellValue(spec, col) : null;
                           const displayVal = renderTableCell(product, spec, col, role);
+                          const cellTitle =
+                            col === "销售价格(元)"
+                              ? formatRoundedPrice(cellVal as string | number | null)
+                              : getCellTitle(cellVal);
                           return (
                             <td
                               key={col}
@@ -273,7 +286,7 @@ export function ProductTable({
                               style={
                                 COLUMN_WIDTHS[col] ? { maxWidth: COLUMN_WIDTHS[col] } : {}
                               }
-                              title={getCellTitle(cellVal)}
+                              title={cellTitle}
                             >
                               {displayVal}
                             </td>

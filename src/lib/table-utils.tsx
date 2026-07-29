@@ -1,7 +1,7 @@
 // 表格渲染工具函数 — 类型安全的列值访问
 
 import { toast } from "sonner";
-import { formatPrice } from "@/lib/utils";
+import { formatDateTime, formatPrice, formatRoundedPrice } from "@/lib/utils";
 import type { ColumnName } from "@/lib/constants";
 import type { ProductListItem } from "@/lib/types";
 
@@ -17,6 +17,10 @@ export function getGroupCellValue(
       return product.name;
     case "供应商":
       return product.supplier?.name ?? null; // API 层已将 viewer 的 supplier 设为 null
+    case "期货/现货":
+      return product.stockStatus || "现货";
+    case "上架时间":
+      return formatDateTime(product.listedAt || product.createdAt);
     case "产品链接":
       return product.productLink;
     case "产品重量":
@@ -127,6 +131,23 @@ export function renderTableCell(
         </span>
       );
     }
+    if (col === "期货/现货") {
+      const isInStock = groupVal === "现货";
+      return (
+        <span
+          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+            isInStock
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {groupVal}
+        </span>
+      );
+    }
+    if (col === "上架时间") {
+      return <span className="whitespace-nowrap text-[12px] text-[#4f6256]">{groupVal}</span>;
+    }
     return (
       <span>
         {groupVal ? (
@@ -154,7 +175,7 @@ export function renderTableCell(
       if (col === "销售价格(元)") {
         return (
           <span className="text-[#8b4513] text-sm whitespace-nowrap">
-            {formatPrice(specVal as string | null)}
+            {formatRoundedPrice(specVal as string | null)}
           </span>
         );
       }

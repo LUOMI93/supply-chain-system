@@ -20,6 +20,8 @@
     "prod:check": "tsx scripts/check-production.ts",
     "deploy:check": "pnpm lint && pnpm build",
     "lint": "eslint",
+    "test:unit": "tsx scripts/lib/ops-env.test.ts && tsx scripts/lib/product-display.test.ts",
+    "test:migration": "tsx scripts/lib/product-migration.test.ts",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug"

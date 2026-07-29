@@ -43,6 +43,8 @@ export interface ProductFormData {
   packageSize: string | null;
   packageWeight: string | null;
   boxQuantity: string | null;
+  stockStatus: StockStatus;
+  listedAt: string | null;
   isPublic: boolean;
   remark: string | null;
   version: number;
@@ -97,6 +99,8 @@ export interface AuditLogItem {
 
 // 用户角色
 export type UserRole = "admin" | "editor" | "viewer";
+export type StockStatus = "现货" | "期货";
+export type ListingSortOrder = "" | "desc" | "asc";
 
 // 目录产品（公开）
 export interface CatalogProduct {

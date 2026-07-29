@@ -58,12 +58,16 @@ export async function fetchProducts(params: {
   pageSize?: number;
   search?: string;
   supplierId?: string;
+  sortBy?: "listedAt";
+  sortOrder?: "asc" | "desc";
 }): Promise<PaginatedResponse<ProductListItem>> {
   const searchParams = new URLSearchParams();
   if (params.page) searchParams.set("page", String(params.page));
   if (params.pageSize) searchParams.set("pageSize", String(params.pageSize));
   if (params.search) searchParams.set("search", params.search);
   if (params.supplierId) searchParams.set("supplierId", params.supplierId);
+  if (params.sortBy) searchParams.set("sortBy", params.sortBy);
+  if (params.sortOrder) searchParams.set("sortOrder", params.sortOrder);
 
   return request<PaginatedResponse<ProductListItem>>(
     `/api/products?${searchParams}`

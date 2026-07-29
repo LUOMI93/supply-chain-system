@@ -60,6 +60,12 @@ export async function GET(req: NextRequest) {
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "50")));
   const search = searchParams.get("search") || "";
   const supplierId = searchParams.get("supplierId") ? parseInt(searchParams.get("supplierId")!) : undefined;
+  const sortBy = searchParams.get("sortBy");
+  const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
+  const orderBy: Prisma.ProductGroupOrderByWithRelationInput[] =
+    sortBy === "listedAt"
+      ? [{ listedAt: sortOrder }, { id: "asc" }]
+      : [{ id: "asc" }];
 
   const where: Prisma.ProductGroupWhereInput = {
     // 默认过滤掉软删除的产品
@@ -113,7 +119,7 @@ export async function GET(req: NextRequest) {
       },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      orderBy: { id: "asc" },
+      orderBy,
     }),
     prisma.productGroup.count({ where }),
   ]);
@@ -147,13 +153,32 @@ export async function POST(req: NextRequest) {
   if (error) return error;
 
   const body = await req.json();
-  const { productLink, productWeight, productSize, packageSize, packageWeight, boxQuantity, isPublic, remark, images } = body;
+  const {
+    productLink,
+    productWeight,
+    productSize,
+    packageSize,
+    packageWeight,
+    boxQuantity,
+    isPublic,
+    remark,
+    images,
+  } = body;
   const sku = toTrimmedString(body.sku);
   const name = toTrimmedString(body.name);
   const parsedSupplierId = parsePositiveInt(body.supplierId);
+  const parsedStockStatus = parseStockStatus(body.stockStatus);
+  const stockStatus = parsedStockStatus || "现货";
+  const listedAt = parseDateInput(body.listedAt);
 
   if (!sku || !name || !parsedSupplierId) {
     return NextResponse.json({ error: "SKU、产品名称、供应商为必填" }, { status: 400 });
+  }
+  if (hasNonEmptyValue(body.stockStatus) && !parsedStockStatus) {
+    return NextResponse.json({ error: "期货/现货字段只能选择“现货”或“期货”" }, { status: 400 });
+  }
+  if (hasNonEmptyValue(body.listedAt) && !listedAt) {
+    return NextResponse.json({ error: "上架时间格式不正确" }, { status: 400 });
   }
   if (body.specs != null && !Array.isArray(body.specs)) {
     return NextResponse.json({ error: "规格数据格式不正确" }, { status: 400 });
@@ -197,6 +222,8 @@ export async function POST(req: NextRequest) {
         packageSize: packageSize || null,
         packageWeight: packageWeight || null,
         boxQuantity: boxQuantity || null,
+        stockStatus,
+        listedAt: listedAt || new Date(),
         isPublic: isPublic !== false,
         remark: remark || null,
         createdBy: user!.id,
@@ -234,10 +261,25 @@ export async function PUT(req: NextRequest) {
   if (error) return error;
 
   const body = await req.json();
-  const { id, productLink, productWeight, productSize, packageSize, packageWeight, boxQuantity, isPublic, remark, images } = body;
+  const {
+    id,
+    productLink,
+    productWeight,
+    productSize,
+    packageSize,
+    packageWeight,
+    boxQuantity,
+    isPublic,
+    remark,
+    images,
+  } = body;
   const sku = toTrimmedString(body.sku);
   const name = toTrimmedString(body.name);
   const parsedSupplierId = parsePositiveInt(body.supplierId);
+  const stockStatus = hasNonEmptyValue(body.stockStatus)
+    ? parseStockStatus(body.stockStatus)
+    : null;
+  const listedAt = parseDateInput(body.listedAt);
 
   const productId = parseInt(id);
   if (isNaN(productId)) {
@@ -246,6 +288,12 @@ export async function PUT(req: NextRequest) {
 
   if (!sku || !name || !parsedSupplierId) {
     return NextResponse.json({ error: "SKU、产品名称、供应商为必填" }, { status: 400 });
+  }
+  if (hasNonEmptyValue(body.stockStatus) && !stockStatus) {
+    return NextResponse.json({ error: "期货/现货字段只能选择“现货”或“期货”" }, { status: 400 });
+  }
+  if (hasNonEmptyValue(body.listedAt) && !listedAt) {
+    return NextResponse.json({ error: "上架时间格式不正确" }, { status: 400 });
   }
   if (body.specs != null && !Array.isArray(body.specs)) {
     return NextResponse.json({ error: "规格数据格式不正确" }, { status: 400 });
@@ -366,6 +414,8 @@ export async function PUT(req: NextRequest) {
           packageSize: packageSize || null,
           packageWeight: packageWeight || null,
           boxQuantity: boxQuantity || null,
+          stockStatus: stockStatus || existing.stockStatus,
+          listedAt: listedAt || existing.listedAt || existing.createdAt,
           isPublic: isPublic !== false,
           remark: remark || null,
           version: (existing.version || 1) + 1,
@@ -493,6 +543,22 @@ function toTrimmedString(value: unknown): string {
 function parsePositiveInt(value: unknown): number | null {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function hasNonEmptyValue(value: unknown): boolean {
+  return value !== null && value !== undefined && toTrimmedString(value) !== "";
+}
+
+function parseStockStatus(value: unknown): "现货" | "期货" | null {
+  const normalized = toTrimmedString(value);
+  return normalized === "现货" || normalized === "期货" ? normalized : null;
+}
+
+function parseDateInput(value: unknown): Date | null {
+  const normalized = toTrimmedString(value);
+  if (!normalized) return null;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function buildSpecData(

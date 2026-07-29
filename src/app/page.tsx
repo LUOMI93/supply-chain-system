@@ -13,7 +13,7 @@ import { Pagination } from "@/components/Pagination";
 import { DeleteProductDialog } from "@/components/DeleteDialog";
 import { Lightbox } from "@/components/Lightbox";
 import { TableSkeleton } from "@/components/LoadingSkeleton";
-import type { ProductListItem, SupplierListItem } from "@/lib/types";
+import type { ListingSortOrder, ProductListItem, SupplierListItem } from "@/lib/types";
 import { fetchProducts, fetchSuppliers, deleteProduct, exportProducts, fetchDashboardStats } from "@/lib/api";
 import type { DashboardStats } from "@/lib/types";
 
@@ -34,6 +34,12 @@ export default function HomePage() {
   const [search, setSearch] = useState(urlParams.get("search") || "");
   const [supplierFilter, setSupplierFilter] = useState(
     urlParams.get("supplierId") || ""
+  );
+  const initialListingSort = urlParams.get("listingSort");
+  const [listingSort, setListingSort] = useState<ListingSortOrder>(
+    initialListingSort === "asc" || initialListingSort === "desc"
+      ? initialListingSort
+      : ""
   );
   const [suppliers, setSuppliers] = useState<SupplierListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,10 +96,12 @@ export default function HomePage() {
     page?: number;
     search?: string;
     supplierFilter?: string;
+    listingSort?: ListingSortOrder;
   }) => {
     const nextPage = override?.page ?? page;
     const nextSearch = override?.search ?? search;
     const nextSupplierFilter = override?.supplierFilter ?? supplierFilter;
+    const nextListingSort = override?.listingSort ?? listingSort;
 
     setLoading(true);
     try {
@@ -102,6 +110,8 @@ export default function HomePage() {
         pageSize: 50,
         search: nextSearch || undefined,
         supplierId: nextSupplierFilter || undefined,
+        sortBy: nextListingSort ? "listedAt" : undefined,
+        sortOrder: nextListingSort || undefined,
       });
       setProducts(result.data || []);
       setTotal(result.total || 0);
@@ -111,7 +121,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, supplierFilter]);
+  }, [page, search, supplierFilter, listingSort]);
 
   useEffect(() => {
     loadProducts();
@@ -136,6 +146,11 @@ export default function HomePage() {
 
   function handleSupplierChange(v: string) {
     setSupplierFilter(v || "");
+    setPage(1);
+  }
+
+  function handleListingSortChange(value: ListingSortOrder) {
+    setListingSort(value);
     setPage(1);
   }
 
@@ -333,13 +348,13 @@ export default function HomePage() {
     filteredExportSuppliers.every((s) => selectedExportSupplierIds.includes(s.id));
 
   return (
-    <div className="h-screen overflow-hidden bg-[#f6f8f4] flex flex-col">
+    <div className="min-h-screen overflow-y-auto bg-[#f6f8f4] flex flex-col lg:h-screen lg:overflow-hidden">
       {/* Top bar - Premium Header */}
       <div className="shrink-0 z-20 bg-white/85 backdrop-blur-xl border-b border-gray-100/80 shadow-sm">
-        <div className="px-6 py-4">
+        <div className="px-4 py-4 sm:px-6">
           {/* Title Row */}
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-700 flex items-center justify-center shadow-md shadow-teal-500/20">
                 <Package className="w-5 h-5 text-white" />
               </div>
@@ -354,7 +369,7 @@ export default function HomePage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               {/* User Avatar */}
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-xl border border-gray-100">
                 <div className="w-7 h-7 rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white text-[11px] font-medium">
@@ -504,6 +519,8 @@ export default function HomePage() {
             onClearSearch={handleClearSearch}
             supplierFilter={supplierFilter}
             onSupplierFilterChange={handleSupplierChange}
+            listingSort={listingSort}
+            onListingSortChange={handleListingSortChange}
             suppliers={suppliers}
             onSuppliersChanged={() => fetchSuppliers().then((d) => setSuppliers(d.data || []))}
             selectedCols={selectedCols}
@@ -538,7 +555,7 @@ export default function HomePage() {
       </div>
 
       {/* Content - Refined Table */}
-      <div className="px-6 pb-5 pt-3 flex-1 min-h-0 overflow-hidden flex flex-col">
+      <div className="flex h-[70vh] min-h-[520px] shrink-0 flex-col overflow-hidden px-4 pb-5 pt-3 sm:px-6 lg:h-auto lg:min-h-0 lg:flex-1">
         {loading ? (
           <div className="premium-table-wrapper mt-2 flex-1 min-h-0 overflow-hidden">
             <TableSkeleton rows={6} />
@@ -586,7 +603,7 @@ export default function HomePage() {
               onOpenLightbox={openLightbox}
               editMode={editMode}
             />
-            <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/30 flex shrink-0 items-center justify-between">
+            <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="text-[12px] text-gray-500">
                 显示 <span className="text-gray-700 font-medium">{products.length}</span> 条记录，共 <span className="text-gray-700 font-medium">{total}</span> 条
               </div>

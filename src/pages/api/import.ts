@@ -67,6 +67,13 @@ function normalizeColName(raw: string): string {
     // 产品链接
     "链接": "产品链接",
     "url": "产品链接",
+    // 期货/现货
+    "库存状态": "期货/现货",
+    "货期状态": "期货/现货",
+    "现货状态": "期货/现货",
+    // 上架时间
+    "上架日期": "上架时间",
+    "发布时间": "上架时间",
     // 是否公开
     "公开": "是否公开",
     "是否公开显示": "是否公开",
@@ -79,7 +86,7 @@ function normalizeColName(raw: string): string {
 function buildColMap(firstRow: Record<string, unknown>): Map<string, string> {
   const map = new Map<string, string>();
   const standardCols = [
-    "产品组SKU", "产品名称", "供应商",
+    "产品组SKU", "产品名称", "供应商", "期货/现货", "上架时间",
     "规格SKU", "工厂编号", "产品规格",
     "拿货价格(元)", "销售价格(元)",
     "适配车型", "OE码",
@@ -121,6 +128,22 @@ function parseIsPublicValue(raw: string): boolean | null {
   if (truthy.includes(v)) return true;
   if (falsy.includes(v)) return false;
   return null;
+}
+
+function parseStockStatusValue(raw: unknown): "现货" | "期货" | null {
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (!value) return null;
+  if (["现货", "有现货", "stock", "in stock"].includes(value)) return "现货";
+  if (["期货", "预售", "futures", "preorder", "pre-order"].includes(value)) return "期货";
+  return null;
+}
+
+function parseListedAtValue(raw: unknown): Date | null {
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw;
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 // 价格处理：原值直接返回（支持纯数字和文字如"待定""面议"等）
@@ -351,7 +374,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const inheritableFields = [
         "产品名称", "供应商",
         "产品链接", "产品重量", "产品尺寸",
-        "包装尺寸", "包装重量", "装箱数", "是否公开", "备注",
+        "包装尺寸", "包装重量", "装箱数",
+        "期货/现货", "上架时间", "是否公开", "备注",
       ];
 
       for (let i = 0; i < rows.length; i++) {
@@ -467,6 +491,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 boxQuantity: colMap.has("装箱数")
                   ? String(getColValue(row, colMap, "装箱数") || "").trim() || null
                   : group.boxQuantity,
+                stockStatus: colMap.has("期货/现货")
+                  ? parseStockStatusValue(getColValue(row, colMap, "期货/现货")) || group.stockStatus
+                  : group.stockStatus,
+                listedAt: colMap.has("上架时间")
+                  ? parseListedAtValue(getColValue(row, colMap, "上架时间")) || group.listedAt || group.createdAt
+                  : group.listedAt,
                 isPublic: colMap.has("是否公开")
                   ? (() => {
                       const p = parseIsPublicValue(String(getColValue(row, colMap, "是否公开") || ""));
@@ -505,6 +535,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 boxQuantity: colMap.has("装箱数")
                   ? String(getColValue(row, colMap, "装箱数") || "").trim() || null
                   : null,
+                stockStatus: colMap.has("期货/现货")
+                  ? parseStockStatusValue(getColValue(row, colMap, "期货/现货")) || "现货"
+                  : "现货",
+                listedAt: colMap.has("上架时间")
+                  ? parseListedAtValue(getColValue(row, colMap, "上架时间")) || new Date()
+                  : new Date(),
                 isPublic: colMap.has("是否公开")
                   ? (() => {
                       const p = parseIsPublicValue(String(getColValue(row, colMap, "是否公开") || ""));

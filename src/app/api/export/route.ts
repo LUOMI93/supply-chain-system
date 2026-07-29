@@ -12,6 +12,8 @@ const getColumns = () => [
   { header: "产品图片", key: "images", width: 30 },
   { header: "产品名称", key: "name", width: 26 },
   { header: "供应商", key: "supplier", width: 16 },
+  { header: "期货/现货", key: "stockStatus", width: 12 },
+  { header: "上架时间", key: "listedAt", width: 20 },
   { header: "产品规格", key: "spec", width: 20 },
   { header: "规格SKU", key: "specSku", width: 14 },
   { header: "OE码", key: "oeCode", width: 18 },
@@ -226,6 +228,8 @@ export async function GET(req: NextRequest) {
           images: "",
           name: group.name,
           supplier: group.supplier.name,
+          stockStatus: group.stockStatus,
+          listedAt: group.listedAt || group.createdAt,
           spec: spec?.spec || "",
           specSku: spec?.sku || "",
           oeCode: spec?.oeCode || "",
@@ -255,8 +259,9 @@ export async function GET(req: NextRequest) {
           };
         }
 
-        row.getCell(8).alignment = { horizontal: "right", vertical: "middle" };
-        row.getCell(9).alignment = { horizontal: "right", vertical: "middle" };
+        row.getCell(6).numFmt = "yyyy-mm-dd hh:mm";
+        row.getCell(10).alignment = { horizontal: "right", vertical: "middle" };
+        row.getCell(11).alignment = { horizontal: "right", vertical: "middle" };
 
         rowIndex++;
       }
@@ -268,7 +273,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 第二阶段：统一合并单元格（同一产品组前4列、后7列合并）
+    // 第二阶段：统一合并单元格（同一产品组前6列、后7列合并）
     for (const task of mergeTasks) {
       const { startRow, endRow } = task;
       if (startRow === endRow) continue;
@@ -277,13 +282,15 @@ export async function GET(req: NextRequest) {
       sheet.mergeCells(startRow, 2, endRow, 2);
       sheet.mergeCells(startRow, 3, endRow, 3);
       sheet.mergeCells(startRow, 4, endRow, 4);
-      sheet.mergeCells(startRow, 11, endRow, 11);
-      sheet.mergeCells(startRow, 12, endRow, 12);
+      sheet.mergeCells(startRow, 5, endRow, 5);
+      sheet.mergeCells(startRow, 6, endRow, 6);
       sheet.mergeCells(startRow, 13, endRow, 13);
       sheet.mergeCells(startRow, 14, endRow, 14);
       sheet.mergeCells(startRow, 15, endRow, 15);
       sheet.mergeCells(startRow, 16, endRow, 16);
       sheet.mergeCells(startRow, 17, endRow, 17);
+      sheet.mergeCells(startRow, 18, endRow, 18);
+      sheet.mergeCells(startRow, 19, endRow, 19);
     }
 
     // 第三阶段：嵌入图片（在每个产品组的图片列单元格）

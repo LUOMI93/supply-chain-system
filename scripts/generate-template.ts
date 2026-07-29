@@ -15,12 +15,14 @@ async function generateTemplate() {
   });
 
   // 定义列 — 与网页表格显示列顺序完全一致
-  // 网页顺序: 产品组SKU → 图片 → 产品名称 → 供应商 → 产品规格 → 规格SKU → OE码 → 拿货价格(元) → 销售价格(元) → 适配车型 → 产品链接 → 产品重量 → 产品尺寸 → 包装重量 → 包装尺寸 → 装箱数 → 备注
+  // 网页顺序: 产品组SKU → 图片 → 产品名称 → 供应商 → 期货/现货 → 上架时间 → 产品规格 → 规格SKU → OE码 → 拿货价格(元) → 销售价格(元) → 适配车型 → 产品链接 → 产品重量 → 产品尺寸 → 包装重量 → 包装尺寸 → 装箱数 → 备注
   const columns = [
     { header: "产品组SKU", key: "产品组SKU", width: 14 },
     { header: "图片URL", key: "图片URL", width: 40 },
     { header: "产品名称", key: "产品名称", width: 26 },
     { header: "供应商", key: "供应商", width: 16 },
+    { header: "期货/现货", key: "期货/现货", width: 12 },
+    { header: "上架时间", key: "上架时间", width: 20 },
     { header: "产品规格", key: "产品规格", width: 20 },
     { header: "规格SKU", key: "规格SKU", width: 14 },
     { header: "OE码", key: "OE码", width: 18 },
@@ -86,6 +88,8 @@ async function generateTemplate() {
       图片URL: "https://picsum.photos/400/300?random=1; https://picsum.photos/400/300?random=2",
       产品名称: "【示例】陶瓷刹车片 前轮套装",
       供应商: "博世汽车配件",
+      "期货/现货": "现货",
+      上架时间: "2026-07-29 09:00",
       产品规格: "前轮陶瓷片 标准型",
       规格SKU: "BS-8866",
       OE码: "5Q0698151A",
@@ -105,6 +109,8 @@ async function generateTemplate() {
       图片URL: "",
       产品名称: "",
       供应商: "",
+      "期货/现货": "",
+      上架时间: "",
       产品规格: "前轮陶瓷片 高性能型",
       规格SKU: "BS-8866H",
       OE码: "5Q0698151B",
@@ -124,6 +130,8 @@ async function generateTemplate() {
       图片URL: "https://picsum.photos/400/300?random=3",
       产品名称: "【示例】机油滤清器 高效型",
       供应商: "广州汽配城A区",
+      "期货/现货": "期货",
+      上架时间: "2026-07-28 14:30",
       产品规格: "标准过滤精度 30μm",
       规格SKU: "BS-9901",
       OE码: "04152-YZZA1",
@@ -183,6 +191,8 @@ async function generateTemplate() {
     { col: "图片URL", required: "否", desc: "产品图片。支持：1) 网络URL（多张用逗号/分号分隔）；2) 直接复制粘贴图片到单元格；3) 两者混合使用。同一产品多规格时只在第一行填写" },
     { col: "产品名称", required: "是", desc: "产品显示名称。同一产品多个规格时，可每行重复填写，也可只在第一行填写、后续连续规格行留空；同一产品组SKU不能对应多个不同产品名称" },
     { col: "供应商", required: "是", desc: "供应商名称，如不存在会自动创建。同一产品多个规格时，可每行重复填写，也可只在第一行填写、后续连续规格行留空" },
+    { col: "期货/现货", required: "否", desc: "填写“现货”或“期货”。留空时新产品默认按“现货”处理；同一产品多个规格时只需在第一行填写" },
+    { col: "上架时间", required: "否", desc: "产品上架日期和时间，推荐格式为 YYYY-MM-DD HH:mm；留空时使用导入时间" },
     { col: "产品规格", required: "否", desc: "规格描述文字" },
     { col: "规格SKU", required: "是*", desc: "规格的唯一编号。有多个规格时，每行必须填写" },
     { col: "OE码", required: "否", desc: "原厂配件编号" },
@@ -265,6 +275,11 @@ async function generateTemplate() {
       scenario: "供应商",
       requirement: "供应商为必填。源表有供应商名称时照填；同一产品多规格可每行重复填写。若源表按文件或工作表区分供应商，应把该供应商填入每一行。",
       pitfall: "不要把平台名、店铺链接、联系人误填为供应商，除非源数据明确它就是供应商名称。",
+    },
+    {
+      scenario: "期货/现货与上架时间",
+      requirement: "期货/现货只填写“现货”或“期货”。上架时间推荐使用 YYYY-MM-DD HH:mm；源数据没有明确上架时间时留空，让系统使用导入时间。",
+      pitfall: "不要根据库存数量猜测期货或现货，也不要把交货周期、采购日期误填成上架时间。",
     },
     {
       scenario: "规格与规格SKU",

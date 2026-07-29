@@ -22,6 +22,33 @@ export function formatPrice(val: string | number | null | undefined): string {
   return str;
 }
 
+export function formatRoundedPrice(val: string | number | null | undefined): string {
+  if (val === null || val === undefined) return "-";
+  if (typeof val === "number") return `¥${Math.round(val)}`;
+  const str = String(val).trim();
+  if (!str) return "-";
+  const cleaned = str.replace(/^[¥￥]\s*/, "").replace(/,/g, "");
+  const num = Number(cleaned);
+  if (Number.isFinite(num) && /^-?\d+(\.\d+)?$/.test(cleaned)) {
+    return `¥${Math.round(num)}`;
+  }
+  return str;
+}
+
+export function formatDateTime(value: Date | string | null | undefined): string {
+  if (!value) return "-";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 export function escHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")

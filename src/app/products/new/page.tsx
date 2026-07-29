@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ArrowLeft, Plus, Trash2, Upload, Factory, Package, ImageIcon } from "lucide-react";
+import { MAX_IMAGES_PER_PRODUCT, STOCK_STATUS_OPTIONS } from "@/lib/constants";
+import type { StockStatus } from "@/lib/types";
 
 type SpecInput = {
   sku: string; factoryCode: string; spec: string;
@@ -17,6 +19,11 @@ type SpecInput = {
 };
 
 type Supplier = { id: number; name: string; productCount?: number };
+
+function toDateTimeLocalValue(date: Date): string {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -45,6 +52,8 @@ export default function NewProductPage() {
   const [packageSize, setPackageSize] = useState("");
   const [packageWeight, setPackageWeight] = useState("");
   const [boxQuantity, setBoxQuantity] = useState("");
+  const [stockStatus, setStockStatus] = useState<StockStatus>("现货");
+  const [listedAt, setListedAt] = useState(() => toDateTimeLocalValue(new Date()));
   const [remark, setRemark] = useState("");
   const [specs, setSpecs] = useState<SpecInput[]>([
     { sku: "", factoryCode: "", spec: "", costPrice: "", salePrice: "", carModel: "", oeCode: "" },
@@ -62,7 +71,10 @@ export default function NewProductPage() {
   }, [images.length]);
 
   function addImage(file: File) {
-    if (images.length >= 20) { toast.warning("最多 20 张图片"); return; }
+    if (images.length >= MAX_IMAGES_PER_PRODUCT) {
+      toast.warning(`最多 ${MAX_IMAGES_PER_PRODUCT} 张图片`);
+      return;
+    }
     if (file.size > 10 * 1024 * 1024) { toast.warning("单张图片不超过 10MB"); return; }
     const reader = new FileReader();
     reader.onload = (ev) => setImages(prev => [...prev, ev.target?.result as string]);
@@ -106,6 +118,8 @@ export default function NewProductPage() {
           packageSize: packageSize.trim() || null,
           packageWeight: packageWeight.trim() || null,
           boxQuantity: boxQuantity.trim() || null,
+          stockStatus,
+      listedAt: listedAt ? new Date(listedAt).toISOString() : null,
           remark: remark.trim() || null,
           specs: validSpecs.map(s => ({
             sku: s.sku || sku + "-" + Date.now(),
@@ -137,8 +151,8 @@ export default function NewProductPage() {
   return (
     <div className="min-h-screen bg-[#f6f8f4]">
       <div className="sticky top-0 z-20 bg-white/85 backdrop-blur-xl border-b border-gray-100/80 shadow-sm">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
+        <div className="px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={() => router.push("/")} className="h-10 w-10 text-gray-500 hover:text-teal-700 hover:bg-teal-50 rounded-xl">
                 <ArrowLeft className="w-5 h-5" />
@@ -161,8 +175,8 @@ export default function NewProductPage() {
         </div>
       </div>
 
-      <div className="flex min-h-[calc(100vh-80px)]">
-        <div className="w-[58%] overflow-y-auto p-6 border-r border-gray-100">
+      <div className="flex min-h-[calc(100vh-80px)] flex-col xl:flex-row">
+        <div className="w-full overflow-y-auto border-b border-gray-100 p-4 sm:p-6 xl:w-[58%] xl:border-b-0 xl:border-r">
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
             <div>
               <div className="flex items-center gap-2 mb-4">
@@ -172,7 +186,7 @@ export default function NewProductPage() {
                 <h3 className="font-semibold text-gray-800">产品组信息</h3>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-[13px] text-gray-600 font-medium">产品组SKU *</Label>
                   <Input value={sku} onChange={e => setSku(e.target.value)} placeholder="如 MSL-00001" className="h-10 rounded-xl bg-gray-50/60 border border-gray-200 text-[13px] focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10" />
@@ -231,6 +245,30 @@ export default function NewProductPage() {
                 <Label className="text-[13px] text-gray-600 font-medium">产品名称 *</Label>
                 <Input value={name} onChange={e => setName(e.target.value)} placeholder="产品名称" className="h-10 rounded-xl bg-gray-50/60 border border-gray-200 text-[13px] focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10" />
               </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label className="text-[13px] text-gray-600 font-medium">期货/现货</Label>
+                  <select
+                    value={stockStatus}
+                    onChange={(event) => setStockStatus(event.target.value as StockStatus)}
+                    className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50/60 px-3 text-[13px] text-gray-700 outline-none transition focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10"
+                  >
+                    {STOCK_STATUS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px] text-gray-600 font-medium">上架时间</Label>
+                  <Input
+                    type="datetime-local"
+                    value={listedAt}
+                    onChange={(event) => setListedAt(event.target.value)}
+                    className="h-10 rounded-xl bg-gray-50/60 border border-gray-200 text-[13px] focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10"
+                  />
+                </div>
+              </div>
             </div>
 
             <hr className="border-gray-100" />
@@ -250,7 +288,7 @@ export default function NewProductPage() {
                 <Input value={productLink} onChange={e => setProductLink(e.target.value)} placeholder="https://detail.1688.com/..." className="h-10 rounded-xl bg-gray-50/60 border border-gray-200 text-[13px] focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10" />
               </div>
               
-              <div className="grid grid-cols-3 gap-4 mt-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label className="text-[13px] text-gray-600 font-medium">产品重量</Label>
                   <Input value={productWeight} onChange={e => setProductWeight(e.target.value)} placeholder="如 400g" className="h-10 rounded-xl bg-gray-50/60 border border-gray-200 text-[13px] focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10" />
@@ -265,7 +303,7 @@ export default function NewProductPage() {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-[13px] text-gray-600 font-medium">包装重量</Label>
                   <Input value={packageWeight} onChange={e => setPackageWeight(e.target.value)} placeholder="如 20KG" className="h-10 rounded-xl bg-gray-50/60 border border-gray-200 text-[13px] focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/10" />
@@ -289,7 +327,7 @@ export default function NewProductPage() {
                 <ImageIcon className="w-4 h-4 text-purple-600" />
               </div>
               <h3 className="font-semibold text-gray-800">产品图片</h3>
-              <span className="text-xs text-gray-400 ml-auto">{images.length}/20</span>
+              <span className="text-xs text-gray-400 ml-auto">{images.length}/{MAX_IMAGES_PER_PRODUCT}</span>
             </div>
             <div 
               className="flex flex-wrap gap-2 p-4 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-all"
@@ -317,7 +355,7 @@ export default function NewProductPage() {
           </div>
         </div>
 
-        <div className="w-[42%] flex flex-col bg-[#f7faf4]">
+        <div className="flex w-full flex-col bg-[#f7faf4] xl:w-[42%]">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-white/80">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
@@ -348,7 +386,7 @@ export default function NewProductPage() {
                     )}
                   </CardHeader>
                   <CardContent className="px-4 pb-4 pt-0 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-gray-500 font-medium">规格SKU</Label>
                         <Input className="h-8 text-sm rounded-lg bg-gray-50/60 border-gray-200 focus:border-teal-500/50" value={spec.sku} onChange={e => updateSpec(idx, "sku", e.target.value)} />
@@ -362,7 +400,7 @@ export default function NewProductPage() {
                       <Label className="text-[11px] text-gray-500 font-medium">产品规格</Label>
                       <Input className="h-8 text-sm rounded-lg bg-gray-50/60 border-gray-200 focus:border-teal-500/50" value={spec.spec} onChange={e => updateSpec(idx, "spec", e.target.value)} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-gray-500 font-medium">拿货价格(元)</Label>
                         <Input className="h-8 text-sm rounded-lg bg-gray-50/60 border-gray-200 focus:border-teal-500/50" type="text" value={spec.costPrice} onChange={e => updateSpec(idx, "costPrice", e.target.value)} />
@@ -372,7 +410,7 @@ export default function NewProductPage() {
                         <Input className="h-8 text-sm rounded-lg bg-gray-50/60 border-gray-200 focus:border-teal-500/50" type="text" value={spec.salePrice} onChange={e => updateSpec(idx, "salePrice", e.target.value)} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-[11px] text-gray-500 font-medium">适配车型</Label>
                         <Input className="h-8 text-sm rounded-lg bg-gray-50/60 border-gray-200 focus:border-teal-500/50" value={spec.carModel} onChange={e => updateSpec(idx, "carModel", e.target.value)} />

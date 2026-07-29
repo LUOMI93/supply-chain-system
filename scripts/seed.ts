@@ -108,6 +108,8 @@ async function main() {
       packageSize: "200×120×50mm",
       packageWeight: "2.0kg",
       boxQuantity: "10套/箱",
+      stockStatus: "现货",
+      listedAt: new Date("2026-07-21T09:00:00+08:00"),
       remark: "适配大众迈腾/帕萨特 2018-2023款",
       specs: {
         create: [
@@ -148,6 +150,8 @@ async function main() {
       packageSize: "120×120×150mm",
       packageWeight: "0.42kg",
       boxQuantity: "50个/箱",
+      stockStatus: "现货",
+      listedAt: new Date("2026-07-22T10:30:00+08:00"),
       remark: "适配丰田凯美瑞/RAV4 2019-2024款",
       specs: {
         create: [
@@ -197,6 +201,8 @@ async function main() {
       packageSize: "180×120×80mm",
       packageWeight: "0.35kg",
       boxQuantity: "20对/箱",
+      stockStatus: "现货",
+      listedAt: new Date("2026-07-23T14:00:00+08:00"),
       remark: "6000K白光，带散热风扇，即插即用",
       specs: {
         create: [
@@ -236,6 +242,8 @@ async function main() {
       packageSize: "100×80×25mm",
       packageWeight: "0.08kg",
       boxQuantity: "100支/箱",
+      stockStatus: "期货",
+      listedAt: new Date("2026-07-24T11:15:00+08:00"),
       remark: "铱金电极，寿命10万公里，需提前3天订货",
       specs: {
         create: [
@@ -275,6 +283,8 @@ async function main() {
       packageSize: "700×100×40mm",
       packageWeight: "0.5kg",
       boxQuantity: "30对/箱",
+      stockStatus: "现货",
+      listedAt: new Date("2026-07-25T08:45:00+08:00"),
       remark: "硅胶材质，静音耐磨",
       specs: {
         create: [
@@ -314,6 +324,8 @@ async function main() {
       packageSize: "50×50×30mm",
       packageWeight: "0.04kg",
       boxQuantity: "200个/箱",
+      stockStatus: "现货",
+      listedAt: new Date("2026-07-26T16:20:00+08:00"),
       remark: "5脚常开型，带插座，适合改装",
       specs: {
         create: [
@@ -353,6 +365,8 @@ async function main() {
       packageSize: "200×150×50mm",
       packageWeight: "1.65kg",
       boxQuantity: "10条/箱",
+      stockStatus: "期货",
+      listedAt: new Date("2026-07-27T13:10:00+08:00"),
       remark: "加厚油封，高耐磨，适合125-250cc车型",
       specs: {
         create: [
@@ -392,6 +406,8 @@ async function main() {
       packageSize: "300×220×60mm",
       packageWeight: "0.6kg",
       boxQuantity: "20个/箱",
+      stockStatus: "现货",
+      listedAt: new Date("2026-07-28T17:40:00+08:00"),
       remark: "湿式高流量滤芯，可清洗重复使用",
       specs: {
         create: [

@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Download, Upload, Search, Columns, Trash2, Factory, X } from "lucide-react";
+import { Plus, Download, Upload, Search, Columns, Trash2, Factory, X, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { GROUP_COLUMNS, SPEC_COLUMNS, COLUMN_PRESETS, type ColumnName } from "@/lib/constants";
-import type { SupplierListItem } from "@/lib/types";
+import type { ListingSortOrder, SupplierListItem } from "@/lib/types";
 import { deleteProducts } from "@/lib/api";
 
 interface ToolbarProps {
@@ -18,6 +18,8 @@ interface ToolbarProps {
   onClearSearch: () => void;
   supplierFilter: string;
   onSupplierFilterChange: (v: string) => void;
+  listingSort: ListingSortOrder;
+  onListingSortChange: (value: ListingSortOrder) => void;
   suppliers: SupplierListItem[];
   onSuppliersChanged: () => void;
   selectedCols: ColumnName[];
@@ -42,6 +44,8 @@ export function Toolbar({
   onClearSearch,
   supplierFilter,
   onSupplierFilterChange,
+  listingSort,
+  onListingSortChange,
   suppliers,
   selectedCols,
   onToggleCol,
@@ -285,6 +289,24 @@ export function Toolbar({
             </div>
           </>
         )}
+      </div>
+
+      <div className="relative">
+        <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+        <select
+          aria-label="按上架时间排序"
+          value={listingSort}
+          onChange={(event) => onListingSortChange(event.target.value as ListingSortOrder)}
+          className={`h-8 appearance-none rounded-md border bg-white pl-8 pr-7 text-xs outline-none transition focus:ring-2 focus:ring-emerald-500/10 ${
+            listingSort
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-gray-200 text-gray-600"
+          }`}
+        >
+          <option value="">默认排序</option>
+          <option value="desc">上架时间：最新</option>
+          <option value="asc">上架时间：最早</option>
+        </select>
       </div>
 
       <div ref={columnSelectorRef} className="relative">

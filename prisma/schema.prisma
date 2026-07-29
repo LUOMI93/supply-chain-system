@@ -8,18 +8,18 @@ datasource db {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
-  passwordHash String    @map("password_hash")
-  displayName  String?   @map("display_name")
-  role         String    @default("viewer")
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  failedLoginCount Int    @default(0) @map("failed_login_count")
-  lockedUntil  DateTime? @map("locked_until")
-  mustChangePassword Boolean @default(false) @map("must_change_password")
-  passwordUpdatedAt DateTime? @map("password_updated_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id                 Int       @id @default(autoincrement())
+  username           String    @unique
+  passwordHash       String    @map("password_hash")
+  displayName        String?   @map("display_name")
+  role               String    @default("viewer")
+  isActive           Boolean   @default(true) @map("is_active")
+  lastLoginAt        DateTime? @map("last_login_at")
+  failedLoginCount   Int       @default(0) @map("failed_login_count")
+  lockedUntil        DateTime? @map("locked_until")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  passwordUpdatedAt  DateTime? @map("password_updated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   columnPrefs      UserColumnPref?
   auditLogs        AuditLog[]
@@ -77,6 +77,8 @@ model ProductGroup {
   packageSize   String?   @map("package_size")
   packageWeight String?   @map("package_weight")
   boxQuantity   String?   @map("box_quantity")
+  stockStatus   String    @default("现货") @map("stock_status")
+  listedAt      DateTime? @map("listed_at")
   isPublic      Boolean   @default(true) @map("is_public")
   remark        String?
   version       Int       @default(1)
@@ -93,6 +95,7 @@ model ProductGroup {
 
   @@index([supplierId])
   @@index([sku])
+  @@index([listedAt])
   @@index([isPublic])
   @@index([deletedAt])
   @@map("product_groups")
